@@ -1,6 +1,5 @@
 from fastapi import FastAPI, APIRouter
-from db import get_neo4j_driver
-
+from services.neo4j_client import get_neo4j_driver
 app = FastAPI()
 router = APIRouter()
 
