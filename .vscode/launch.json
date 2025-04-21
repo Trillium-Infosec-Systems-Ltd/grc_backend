@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Python Debugger: FastAPI",
+        "type": "debugpy",
+        "request": "launch",
+        "module": "uvicorn",
+        "cwd": "${workspaceFolder}",  // Ensures correct working directory
+        "args": [
+          "app.main:app",
+          "--reload"
+        ],
+        "jinja": true,
+        "env": {
+          "PYTHONPATH": "${workspaceFolder}/app"  // Helps resolve 'services' properly
+        }
+      },
+      {
+        "name": "Python Debugger: Current File",
+        "type": "debugpy",
+        "request": "launch",
+        "program": "${file}",
+        "console": "integratedTerminal"
+      }
+    ]
+  }
