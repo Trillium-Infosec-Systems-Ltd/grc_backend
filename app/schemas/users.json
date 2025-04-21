@@ -1,0 +1,46 @@
+{
+    "doctype": "User",
+    "fields": [
+      {
+        "fieldname": "name",
+        "fieldtype": "Data",
+        "label": "Full Name",
+        "required": true,
+        "validation": {
+          "min_length": 3,
+          "max_length": 100
+        }
+      },
+      {
+        "fieldname": "email",
+        "fieldtype": "Data",
+        "label": "Email",
+        "required": true,
+        "validation": {
+          "regex": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+        }
+      },
+      {
+        "fieldname": "role",
+        "fieldtype": "Select",
+        "label": "Role",
+        "options": ["Admin", "Manager", "Employee"],
+        "required": true
+      },
+      {
+        "fieldname": "department",
+        "fieldtype": "Link",
+        "label": "Department",
+        "link_to": "Department",
+        "required": false
+      },
+      {
+        "fieldname": "status",
+        "fieldtype": "Select",
+        "label": "Status",
+        "options": ["Active", "Inactive", "Suspended"],
+        "required": true,
+        "default": "Active"
+      }
+    ]
+  }

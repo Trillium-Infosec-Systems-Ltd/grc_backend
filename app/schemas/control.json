@@ -1,0 +1,83 @@
+{
+    "doctype": "Control",
+    "fields": [
+      {
+        "fieldname": "control_name",
+        "fieldtype": "Data",
+        "label": "Control Name",
+        "required": true
+      },
+      {
+        "fieldname": "control_id",
+        "fieldtype": "Data",
+        "label": "Control ID (e.g., PR.AC-1)",
+        "required": true
+      },
+      {
+        "fieldname": "framework",
+        "fieldtype": "Select",
+        "label": "Framework",
+        "options": ["NIST CSF", "ISO 27001", "PCI DSS", "HIPAA"],
+        "required": true,
+        "default": "NIST CSF"
+      },
+      {
+        "fieldname": "owner",
+        "fieldtype": "Link",
+        "label": "Control Owner",
+        "link_to": "User",
+        "required": true
+      },
+      {
+        "fieldname": "compliance_status",
+        "fieldtype": "Select",
+        "label": "Compliance Status",
+        "options": ["Compliant", "Partially Compliant", "Non-Compliant", "Not Applicable"],
+        "required": true
+      },
+      {
+        "fieldname": "implementation_guidelines",
+        "fieldtype": "LongText",
+        "label": "Implementation Guidelines",
+        "required": true
+      },
+      {
+        "fieldname": "tools_systems",
+        "fieldtype": "MultiSelect",
+        "label": "Tools/Systems in Use",
+        "options": ["Okta", "Azure AD", "Google Workspace", "AWS IAM", "Other"],
+        "required": false
+      },
+      {
+        "fieldname": "linked_policies",
+        "fieldtype": "MultiLink",
+        "label": "Linked Policies",
+        "link_to": "Policy",
+        "required": false
+      },
+      {
+        "fieldname": "last_updated",
+        "fieldtype": "Date",
+        "label": "Last Updated",
+        "required": true
+      },
+      {
+        "fieldname": "next_review_date",
+        "fieldtype": "Date",
+        "label": "Next Review Date",
+        "required": true
+      },
+      {
+        "fieldname": "audit_requirements",
+        "fieldtype": "LongText",
+        "label": "Audit Requirements",
+        "required": false
+      },
+      {
+        "fieldname": "known_gaps",
+        "fieldtype": "LongText",
+        "label": "Known Gaps/Issues",
+        "required": false
+      }
+    ]
+  }
