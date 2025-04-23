@@ -1,6 +1,8 @@
 from neo4j import AsyncSession
 from services.schema_loader import load_schema
 import uuid
+from neo4j import AsyncDriver
+import json
 
 class GenericCRUD:
     def __init__(self, session: AsyncSession, doctype: str):
@@ -70,3 +72,8 @@ class GenericCRUD:
         result = await self.session.run(query, item_id=item_id)
         deleted = await result.single()
         return deleted["deleted_count"]
+    
+
+
+
+# --- Service Logic for Link Options ---

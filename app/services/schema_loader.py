@@ -1,12 +1,14 @@
 from pathlib import Path
 import json
 from fastapi import HTTPException
+from neo4j import AsyncDriver
 
 SCHEMA_DIR = Path(__file__).parent.parent / "schemas"
 
 def load_schema(doctype: str) -> dict:
     """Load schema JSON with validation"""
     try:
+        
         filepath = SCHEMA_DIR / f"{doctype.lower()}.json"
         if not filepath.exists():
             available = [f.stem for f in SCHEMA_DIR.glob("*.json")]
@@ -20,3 +22,7 @@ def load_schema(doctype: str) -> dict:
             
     except json.JSONDecodeError:
         raise HTTPException(500, detail="Invalid schema JSON")
+    
+
+
+

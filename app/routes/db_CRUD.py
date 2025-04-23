@@ -1,11 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, Path
 from neo4j import AsyncSession
 from services.db_CRUD import GenericCRUD
+
 from services.database import get_db
+from fastapi import Query
+from neo4j import AsyncDriver
+from typing import Optional, List
+import json
 
-router = APIRouter(prefix="/api", tags=["CRUD"])
 
-@router.post("/{doctype}")
+
+
+router = APIRouter()
+
+@router.post("/data/{doctype}")
 async def create_item(
     doctype: str,
     data: dict,
@@ -20,7 +28,7 @@ async def create_item(
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-@router.get("/{doctype}")
+@router.get("/data/{doctype}")
 async def get_all_items(
     doctype: str,
     db: AsyncSession = Depends(get_db)
@@ -34,7 +42,7 @@ async def get_all_items(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{doctype}/{item_id}")
+@router.get("/data/{doctype}/{item_id}")
 async def get_item(doctype: str, item_id: str, db: AsyncSession = Depends(get_db)):
     crud = GenericCRUD(db, doctype)
     item = await crud.get_by_id(item_id)
@@ -42,7 +50,7 @@ async def get_item(doctype: str, item_id: str, db: AsyncSession = Depends(get_db
         raise HTTPException(404, detail="Item not found")
     return item
 
-@router.put("/{doctype}/{item_id}")
+@router.put("/data/{doctype}/{item_id}")
 async def update_item(doctype: str, item_id: str, data: dict, db: AsyncSession = Depends(get_db)):
     crud = GenericCRUD(db, doctype)
     updated = await crud.update(item_id, data)
@@ -50,10 +58,12 @@ async def update_item(doctype: str, item_id: str, data: dict, db: AsyncSession =
         raise HTTPException(404, detail="Item not found or not updated")
     return updated
 
-@router.delete("/{doctype}/{item_id}")
+@router.delete("/data/{doctype}/{item_id}")
 async def delete_item(doctype: str, item_id: str, db: AsyncSession = Depends(get_db)):
     crud = GenericCRUD(db, doctype)
     count = await crud.delete(item_id)
     if not count:
         raise HTTPException(404, detail="Item not found or not deleted")
     return {"detail": "Deleted successfully"}
+
+
