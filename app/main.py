@@ -1,8 +1,18 @@
 from fastapi import FastAPI, APIRouter
 from services.neo4j_client import get_neo4j_driver
 from routes import db_CRUD, health,schemas,generics  # Separate routers
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],  
+    allow_headers=["*"],  
+)
 
 # Include all routers
 app.include_router(health.router,prefix="/api")
