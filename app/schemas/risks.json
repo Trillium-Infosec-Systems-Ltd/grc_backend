@@ -5,6 +5,7 @@
         "fieldname": "risk_name",
         "fieldtype": "Data",
         "label": "Risk Name",
+        "display_on_frontend":true,
         "required": true,
         "validation": {
           "min_length": 5,
@@ -16,6 +17,7 @@
         "fieldtype": "Select",
         "label": "Risk Category",
         "options": ["Security", "Compliance", "Operational", "Financial", "Strategic"],
+        "display_on_frontend":false,
         "required": true,
         "default": "Security"
       },
@@ -24,6 +26,7 @@
         "fieldtype": "Select",
         "label": "Likelihood",
         "options": ["Low", "Medium", "High", "Critical"],
+        "display_on_frontend":true,
         "required": true
       },
       {
@@ -31,6 +34,7 @@
         "fieldtype": "Select",
         "label": "Impact",
         "options": ["Low", "Medium", "High", "Critical"],
+        "display_on_frontend":false,
         "required": true
       },
       {
@@ -38,6 +42,7 @@
         "fieldtype": "MultiLink",
         "label": "Related Assets",
         "link_to": "Asset",
+        "display_on_frontend":false,
         "required": true
       },
       {
@@ -45,12 +50,14 @@
         "fieldtype": "Select",
         "label": "Department",
         "options": ["Finance", "IT", "HR", "Operations", "Legal"],
+        "display_on_frontend":false,
         "required": true
       },
       {
         "fieldname": "risk_description",
         "fieldtype": "LongText",
         "label": "Risk Description",
+        "display_on_frontend":false,
         "required": true
       },
       {
@@ -58,18 +65,21 @@
         "fieldtype": "Link",
         "label": "Owner",
         "link_to": "User",
+        "display_on_frontend":true,
         "required": true
       },
       {
         "fieldname": "date_identified",
         "fieldtype": "Date",
         "label": "Date Identified",
+        "display_on_frontend":false,
         "required": true
       },
       {
         "fieldname": "related_vulnerabilities",
         "fieldtype": "Tags",
         "label": "Related Vulnerabilities (CVEs)",
+        "display_on_frontend":false,
         "required": false
       },
       {
@@ -77,12 +87,14 @@
         "fieldtype": "Select",
         "label": "Risk Decision",
         "options": ["Accept", "Mitigate", "Transfer", "Avoid"],
+        "display_on_frontend":true,
         "required": true
       },
       {
         "fieldname": "treatment_plan",
         "fieldtype": "LongText",
         "label": "Treatment Plan",
+        "display_on_frontend":false,
         "required": false
       },
       {
@@ -90,18 +102,21 @@
         "fieldtype": "Select",
         "label": "Residual Risk",
         "options": ["Low", "Medium", "High"],
+        "display_on_frontend":true,
         "required": false
       },
       {
         "fieldname": "review_date",
         "fieldtype": "Date",
         "label": "Review Date",
+        "display_on_frontend":false,
         "required": true
       },
       {
         "fieldname": "attachments",
         "fieldtype": "File",
         "label": "Supporting Evidence",
+        "display_on_frontend":false,
         "required": false
       }
     ]

@@ -3,6 +3,7 @@ from services.schema_loader import load_schema
 import uuid
 from neo4j import AsyncDriver
 import json
+from datetime import datetime
 
 class GenericCRUD:
     def __init__(self, session: AsyncSession, doctype: str):
@@ -25,6 +26,10 @@ class GenericCRUD:
         if "id" not in data:
             data["id"] = str(uuid.uuid4())
 
+        now = datetime.utcnow().isoformat()
+        data["created_at"] = now
+        data["updated_at"] = now
+
         query = f"""
         CREATE (n:{self.doctype} $data)
         RETURN n
@@ -32,13 +37,29 @@ class GenericCRUD:
         result = await self.session.run(query, data=data)
         return await result.single()
     
-    async def get_all(self):
-        query = f"""
+    async def get_all(self, skip: int = 0, limit: int = 10):
+        # 1. Get total count
+        count_query = f"MATCH (n:{self.doctype}) RETURN count(n) AS total"
+        count_result = await self.session.run(count_query)
+        count_record = await count_result.single()
+        total = count_record["total"]
+
+        # 2. Get paginated data
+        data_query = f"""
         MATCH (n:{self.doctype})
         RETURN n
+        SKIP $skip
+        LIMIT $limit
         """
-        result = await self.session.run(query)
-        return await result.data()
+        data_result = await self.session.run(data_query, skip=skip, limit=limit)
+        records = await data_result.data()
+
+        return {
+            "total": total,
+            "skip": skip,
+            "limit": limit,
+            "items": [record["n"] for record in records]
+        }
 
     async def get_by_id(self, item_id: str):
         query = f"""
@@ -50,8 +71,10 @@ class GenericCRUD:
         if record:
             return record["n"]
         return None
-
     async def update(self, item_id: str, data: dict):
+        now = datetime.utcnow().isoformat()
+        data["updated_at"] = now
+
         query = f"""
         MATCH (n:{self.doctype} {{id: $item_id}})
         SET n += $data
@@ -62,7 +85,7 @@ class GenericCRUD:
         if record:
             return record["n"]
         return None
-
+    
     async def delete(self, item_id: str):
         query = f"""
         MATCH (n:{self.doctype} {{id: $item_id}})
