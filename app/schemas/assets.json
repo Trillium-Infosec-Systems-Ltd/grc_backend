@@ -6,6 +6,10 @@
         "fieldtype": "Data",
         "label": "Asset Name",
         "required": true,
+        "display_on_frontend":true,
+      
+
+
         "validation": {
           "min_length": 2,
           "max_length": 100
@@ -16,7 +20,8 @@
         "fieldtype": "Select",
         "label": "Asset Type",
         "options": ["Database", "Server", "Web Application", "Endpoint Security"],
-        "required": true
+        "required": true,
+        "display_on_frontend":true
       },
       {
         "fieldname": "criticality",
@@ -24,12 +29,14 @@
         "label": "Criticality Level",
         "options": ["Low", "Medium", "High", "Critical"],
         "required": true,
+        "display_on_frontend":true,
         "default": "Medium"
       },
       {
         "fieldname": "ip_hostname",
         "fieldtype": "Data",
         "label": "IP/Hostname",
+        "display_on_frontend":true,
         "required": true,
         "validation": {
           "regex": "^(([0-9]{1,3}\\.){3}[0-9]{1,3}|[a-zA-Z0-9\\-]+(\\.[a-zA-Z0-9\\-]+)+)$"
@@ -40,6 +47,7 @@
         "fieldtype": "Link",
         "label": "Asset Owner",
         "link_to": "User",
+        "display_on_frontend":true,
         "required": false
       }
     ]

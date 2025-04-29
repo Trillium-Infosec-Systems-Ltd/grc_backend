@@ -5,6 +5,7 @@
         "fieldname": "name",
         "fieldtype": "Data",
         "label": "Full Name",
+        "display_on_frontend":true,
         "required": true,
         "validation": {
           "min_length": 3,
@@ -16,6 +17,7 @@
         "fieldtype": "Data",
         "label": "Email",
         "required": true,
+        "display_on_frontend":true,
         "validation": {
           "regex": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
         }
@@ -24,6 +26,7 @@
         "fieldname": "role",
         "fieldtype": "Select",
         "label": "Role",
+        "display_on_frontend":true,
         "options": ["Admin", "Manager", "Employee"],
         "required": true
       },
@@ -32,6 +35,7 @@
         "fieldtype": "Link",
         "label": "Department",
         "link_to": "Department",
+        "display_on_frontend":true,
         "required": false
       },
       {
@@ -39,6 +43,7 @@
         "fieldtype": "Select",
         "label": "Status",
         "options": ["Active", "Inactive", "Suspended"],
+        "display_on_frontend":true,
         "required": true,
         "default": "Active"
       }
