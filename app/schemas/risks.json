@@ -118,6 +118,24 @@
         "label": "Supporting Evidence",
         "display_on_frontend":false,
         "required": false
+      },
+      {
+        "fieldname": "updated_at",
+        "fieldtype": "Data",
+        "label": "Updated at",
+        "default_label":false,
+        "display_on_frontend":true,
+        "required": false,
+        "display":"none"
+      },
+      {
+        "fieldname": "created_at",
+        "fieldtype": "Data",
+        "label": "Created at",
+        "default_label":false,
+        "display_on_frontend":false,
+        "required": false,
+        "display":"none"
       }
     ]
   }

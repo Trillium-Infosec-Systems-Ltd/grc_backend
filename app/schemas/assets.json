@@ -5,11 +5,9 @@
         "fieldname": "asset_name",
         "fieldtype": "Data",
         "label": "Asset Name",
+        "default_label":true,
         "required": true,
         "display_on_frontend":true,
-      
-
-
         "validation": {
           "min_length": 2,
           "max_length": 100
@@ -21,6 +19,7 @@
         "label": "Asset Type",
         "options": ["Database", "Server", "Web Application", "Endpoint Security"],
         "required": true,
+        "default_label":false,
         "display_on_frontend":true
       },
       {
@@ -29,6 +28,7 @@
         "label": "Criticality Level",
         "options": ["Low", "Medium", "High", "Critical"],
         "required": true,
+        "default_label":false,
         "display_on_frontend":true,
         "default": "Medium"
       },
@@ -38,6 +38,7 @@
         "label": "IP/Hostname",
         "display_on_frontend":true,
         "required": true,
+        "default_label":false,
         "validation": {
           "regex": "^(([0-9]{1,3}\\.){3}[0-9]{1,3}|[a-zA-Z0-9\\-]+(\\.[a-zA-Z0-9\\-]+)+)$"
         }
@@ -47,8 +48,36 @@
         "fieldtype": "Link",
         "label": "Asset Owner",
         "link_to": "User",
+        "default_label":false,
         "display_on_frontend":true,
         "required": false
+      },
+      {
+        "fieldname": "update",
+        "fieldtype": "Link",
+        "label": "Asset Owner",
+        "link_to": "User",
+        "default_label":false,
+        "display_on_frontend":true,
+        "required": false
+      },
+      {
+        "fieldname": "updated_at",
+        "fieldtype": "Data",
+        "label": "Updated at",
+        "default_label":false,
+        "display_on_frontend":true,
+        "required": false,
+        "display":"none"
+      },
+      {
+        "fieldname": "created_at",
+        "fieldtype": "Data",
+        "label": "Created at",
+        "link_to": "User",
+        "default_label":false,
+        "display_on_frontend":false,
+        "display":"none"
       }
     ]
   }
