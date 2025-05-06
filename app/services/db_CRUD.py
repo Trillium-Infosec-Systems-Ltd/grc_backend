@@ -23,8 +23,8 @@ class GenericCRUD:
                 raise ValueError(f"Missing required field: {field}")
 
         # Add a unique ID if not present
-        if "id" not in data:
-            data["id"] = str(uuid.uuid4())
+     
+        data["id"] = str(uuid.uuid4())
 
         now = datetime.utcnow().isoformat()
         data["created_at"] = now

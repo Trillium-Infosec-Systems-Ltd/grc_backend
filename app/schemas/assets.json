@@ -66,7 +66,7 @@
         "fieldtype": "Data",
         "label": "Updated at",
         "default_label":false,
-        "display_on_frontend":true,
+        "display_on_frontend":false,
         "required": false,
         "display":"none"
       },
