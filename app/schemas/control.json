@@ -98,7 +98,7 @@
         "default_label":false,
         "display_on_frontend":false,
         "required": false,
-        "display":"none"
+        "hidden":true
       },
       {
         "fieldname": "created_at",
@@ -107,7 +107,7 @@
         "default_label":false,
         "display_on_frontend":false,
         "required": false,
-        "display":"none"
+        "hidden":true
       }
     ]
   }

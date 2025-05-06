@@ -68,7 +68,7 @@
         "default_label":false,
         "display_on_frontend":false,
         "required": false,
-        "display":"none"
+        "hidden":true
       },
       {
         "fieldname": "created_at",
@@ -77,7 +77,7 @@
         "link_to": "User",
         "default_label":false,
         "display_on_frontend":false,
-        "display":"none"
+        "hidden":true
       }
     ]
   }
