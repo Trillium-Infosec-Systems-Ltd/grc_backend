@@ -12,27 +12,54 @@ import json
 from services.schema_loader import load_schema
 router = APIRouter()
 
+
 @router.get("/link-options")
 async def get_link_options(
     document_type: str = Query(..., description="Node label to query, e.g. 'User', 'Department'"),
-    field: str = Query("name", description="Property to use as the label"),
-    search_term: Optional[str] = Query(None, description="Text to filter dropdown results (typeahead)"),
+    field: Optional[str] = Query(None, description="Comma-separated fields like 'name,id'"),
+    search_term: Optional[str] = Query(None, description="Search values, e.g. 'john,123'"),
     filters: Optional[str] = Query(None, description="JSON string for filtering nodes"),
     offset: int = Query(0, ge=0),
     driver: AsyncDriver = Depends(get_db),
 ):
     limit = 20
+
     try:
+        schema = load_schema(document_type)
+        schema_fields = {f["fieldname"] for f in schema.get("fields", [])}
+
+        # Parse fields and search terms
+        field_list = field.split(",") if field else []
+        search_terms = search_term.split(",") if search_term else []
+
+        # If no valid fields given, fallback to default_label
+        if not field_list or any(f not in schema_fields for f in field_list):
+            default_field = next((f["fieldname"] for f in schema["fields"] if f.get("default_label")), None)
+            if not default_field:
+                raise HTTPException(status_code=400, detail="No valid fields or default_label found.")
+            field_list = [default_field]
+            search_terms = [search_term] if search_term else []
+
+        # Adjust lengths
+        if len(search_terms) < len(field_list):
+            search_terms += [""] * (len(field_list) - len(search_terms))
+        elif len(search_terms) > len(field_list):
+            search_terms = search_terms[:len(field_list)]
+
+        search_fields = list(zip(field_list, search_terms))
+
         data = await get_link_options_service(
             driver=driver,
             document_type=document_type,
-            field=field,
-            search_term=search_term,
+            search_fields=search_fields,
             filters=filters,
             limit=limit,
             offset=offset
         )
         return data
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
@@ -54,21 +81,6 @@ async def get_form_metadata(doctype: str):
                 "dataIndex": field["fieldname"],
                 "key": field["fieldname"]
             })
-
-    # Second: Add system fields manually
-    system_fields = [
-        # {
-        #     "title": "Created At",
-        #     "dataIndex": "created_at",
-        #     "key": "created_at"
-        # },
-        {
-            "title": "Last Update",
-            "dataIndex": "updated_at",
-            "key": "updated_at"
-        }
-    ]
-    columns.extend(system_fields)
 
     return {
         "form_id": doctype,
