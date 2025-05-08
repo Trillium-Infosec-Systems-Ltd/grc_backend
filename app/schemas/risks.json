@@ -7,6 +7,7 @@
         "label": "Risk Name",
         "display_on_frontend":true,
         "required": true,
+        "span" :12,
         "validation": {
           "min_length": 5,
           "max_length": 200
@@ -19,6 +20,7 @@
         "options": ["Security", "Compliance", "Operational", "Financial", "Strategic"],
         "display_on_frontend":false,
         "required": true,
+        "span" :12,
         "default": "Security"
       },
       {
@@ -27,6 +29,7 @@
         "label": "Likelihood",
         "options": ["Low", "Medium", "High", "Critical"],
         "display_on_frontend":true,
+        "span" :12,
         "required": true
       },
       {
@@ -35,6 +38,7 @@
         "label": "Impact",
         "options": ["Low", "Medium", "High", "Critical"],
         "display_on_frontend":false,
+        "span" :12,
         "required": true
       },
       {
@@ -42,6 +46,7 @@
         "fieldtype": "MultiLink",
         "label": "Related Assets",
         "link_to": "Asset",
+        "span" :12,
         "display_on_frontend":false,
         "required": true
       },
@@ -51,6 +56,7 @@
         "label": "Department",
         "options": ["Finance", "IT", "HR", "Operations", "Legal"],
         "display_on_frontend":false,
+        "span" :12,
         "required": true
       },
       {
@@ -58,6 +64,7 @@
         "fieldtype": "LongText",
         "label": "Risk Description",
         "display_on_frontend":false,
+        "span" :12,
         "required": true
       },
       {
@@ -66,6 +73,7 @@
         "label": "Owner",
         "link_to": "User",
         "display_on_frontend":true,
+        "span" :12,
         "required": true
       },
       {
@@ -73,6 +81,7 @@
         "fieldtype": "Date",
         "label": "Date Identified",
         "display_on_frontend":false,
+        "span" :12,
         "required": true
       },
       {
@@ -80,6 +89,7 @@
         "fieldtype": "Tags",
         "label": "Related Vulnerabilities (CVEs)",
         "display_on_frontend":false,
+        "span" :12,
         "required": false
       },
       {
@@ -88,6 +98,7 @@
         "label": "Risk Decision",
         "options": ["Accept", "Mitigate", "Transfer", "Avoid"],
         "display_on_frontend":true,
+        "span" :12,
         "required": true
       },
       {
@@ -95,6 +106,7 @@
         "fieldtype": "LongText",
         "label": "Treatment Plan",
         "display_on_frontend":false,
+        "span" :12,
         "required": false
       },
       {
@@ -103,6 +115,7 @@
         "label": "Residual Risk",
         "options": ["Low", "Medium", "High"],
         "display_on_frontend":true,
+        "span" :12,
         "required": false
       },
       {
@@ -110,6 +123,8 @@
         "fieldtype": "Date",
         "label": "Review Date",
         "display_on_frontend":false,
+        "span" :12,
+        
         "required": true
       },
       {
@@ -117,6 +132,7 @@
         "fieldtype": "File",
         "label": "Supporting Evidence",
         "display_on_frontend":false,
+        "span" :12,
         "required": false
       },
       {
@@ -125,6 +141,7 @@
         "label": "Updated at",
         "default_label":false,
         "display_on_frontend":false,
+        "span" :12,
         "required": false,
         "hidden":true
       },
@@ -134,6 +151,7 @@
         "label": "Created at",
         "default_label":false,
         "display_on_frontend":false,
+        "span" :12,
         "required": false,
         "hidden":true
       }
