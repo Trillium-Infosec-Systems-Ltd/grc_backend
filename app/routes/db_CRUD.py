@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, UploadFile,File,Request
+from fastapi.responses import FileResponse
 from neo4j import AsyncSession
 from services.db_CRUD import GenericCRUD
 
@@ -7,7 +8,7 @@ from fastapi import Query
 from neo4j import AsyncDriver
 from typing import Optional, List
 import json
-
+import os 
 
 
 
@@ -31,18 +32,25 @@ async def create_item(
 @router.get("/data/{doctype}")
 async def get_all_items(
     doctype: str,
+    request: Request,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db)
 ):
+    # Extract query parameters as filters (except skip/limit)
+    filters = dict(request.query_params)
+    filters.pop("skip", None)
+    filters.pop("limit", None)
+
     crud = GenericCRUD(db, doctype)
     try:
-        paginated_data = await crud.get_all(skip=skip, limit=limit)
+        paginated_data = await crud.get_all(skip=skip, limit=limit, filters=filters)
         if not paginated_data["items"]:
             raise HTTPException(status_code=404, detail="No items found")
         return paginated_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/data/{doctype}/{item_id}")
 async def get_item(doctype: str, item_id: str, db: AsyncSession = Depends(get_db)):
     crud = GenericCRUD(db, doctype)
@@ -66,5 +74,44 @@ async def delete_item(doctype: str, item_id: str, db: AsyncSession = Depends(get
     if not count:
         raise HTTPException(404, detail="Item not found or not deleted")
     return {"detail": "Deleted successfully"}
+
+
+
+
+@router.post("/data/{doctype}/{item_id}/upload")
+async def upload_and_attach_file(
+    doctype: str,
+    item_id: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db)
+):
+    import os
+    from datetime import datetime
+    import uuid
+
+    UPLOAD_DIR = "uploads"
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+    # Generate unique file name
+    ext = file.filename.split(".")[-1]
+    filename = f"{uuid.uuid4()}.{ext}"
+    filepath = os.path.join(UPLOAD_DIR, filename)
+
+    # Save file to disk
+    with open(filepath, "wb") as f:
+        content = await file.read()
+        f.write(content)
+
+    # Update the node in Neo4j with the attachment path
+    query = f"""
+    MATCH (n:{doctype} {{id: $item_id}})
+    SET n.attachments= $filepath,
+        n.updated_at = $updated_at
+    RETURN n
+    """
+
+    result = await db.run(query, item_id=item_id, filepath=filepath, updated_at=datetime.utcnow().isoformat())
+    record = await result.single()
+    return record["n"]
 
 

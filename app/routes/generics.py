@@ -1,6 +1,7 @@
 
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Response
+from fastapi.responses import FileResponse
 from neo4j import AsyncSession
 from services.db_CRUD import GenericCRUD
 from services.generics import get_link_options_service
@@ -10,6 +11,13 @@ from neo4j import AsyncDriver
 from typing import Optional, List
 import json
 from services.schema_loader import load_schema
+import csv
+import io
+import os
+
+
+
+
 router = APIRouter()
 
 
@@ -86,3 +94,33 @@ async def get_form_metadata(doctype: str):
         "form_id": doctype,
         "columns": columns
     }
+
+
+
+@router.get("/csv_template/{node_type}")
+async def generate_csv_template(node_type: str):
+    try:
+        schema = load_schema(node_type)
+
+        # Exclude fields where "hidden" is True
+        fieldnames = [
+            f["fieldname"] for f in schema["fields"]
+            if not f.get("hidden", False)
+        ]
+
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer.writeheader()
+
+        # Optional sample row
+        writer.writerow({field: f"sample_{field}" for field in fieldnames})
+
+        response = Response(content=output.getvalue(), media_type="text/csv")
+        response.headers["Content-Disposition"] = f"attachment; filename={node_type}_template.csv"
+        return response
+
+    except Exception as e:
+        return {"error": str(e)}
+    
+
+
