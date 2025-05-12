@@ -102,19 +102,14 @@ async def generate_csv_template(node_type: str):
     try:
         schema = load_schema(node_type)
 
-        # Exclude fields where "hidden" is True
         fieldnames = [
-            f["fieldname"] for f in schema["fields"]
+            f["label"] for f in schema["fields"]
             if not f.get("hidden", False)
         ]
 
         output = io.StringIO()
         writer = csv.DictWriter(output, fieldnames=fieldnames)
         writer.writeheader()
-
-        # Optional sample row
-        writer.writerow({field: f"sample_{field}" for field in fieldnames})
-
         response = Response(content=output.getvalue(), media_type="text/csv")
         response.headers["Content-Disposition"] = f"attachment; filename={node_type}_template.csv"
         return response

@@ -9,6 +9,7 @@ from neo4j import AsyncDriver
 from typing import Optional, List
 import json
 import os 
+from datetime import datetime
 
 
 
@@ -79,39 +80,46 @@ async def delete_item(doctype: str, item_id: str, db: AsyncSession = Depends(get
 
 
 @router.post("/data/{doctype}/{item_id}/upload")
-async def upload_and_attach_file(
+async def upload_and_attach_files(
     doctype: str,
     item_id: str,
-    file: UploadFile = File(...),
+    files: List[UploadFile] = File(...),
     db: AsyncSession = Depends(get_db)
 ):
-    import os
-    from datetime import datetime
-    import uuid
+    BASE_UPLOAD_DIR = "uploads"
+    target_dir = os.path.join(BASE_UPLOAD_DIR)
+    os.makedirs(target_dir, exist_ok=True)
 
-    UPLOAD_DIR = "uploads"
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    filepaths = []
 
-    # Generate unique file name
-    ext = file.filename.split(".")[-1]
-    filename = f"{uuid.uuid4()}.{ext}"
-    filepath = os.path.join(UPLOAD_DIR, filename)
+    for file in files:
+        original_filename = file.filename
+        filepath = os.path.join(target_dir, original_filename)
 
-    # Save file to disk
-    with open(filepath, "wb") as f:
-        content = await file.read()
-        f.write(content)
+        # Save the file
+        with open(filepath, "wb") as f:
+            content = await file.read()
+            f.write(content)
 
-    # Update the node in Neo4j with the attachment path
+        # Construct accessible URL (you might want to make this dynamic in production)
+        url_path = f"http://127.0.0.1:8000/{filepath.replace(os.sep, '/')}"
+        filepaths.append(url_path)
+
+    # Update node in Neo4j
     query = f"""
     MATCH (n:{doctype} {{id: $item_id}})
-    SET n.attachments= $filepath,
+    SET n.attachments = coalesce(n.attachments, []) + $filepaths,
         n.updated_at = $updated_at
     RETURN n
     """
 
-    result = await db.run(query, item_id=item_id, filepath=filepath, updated_at=datetime.utcnow().isoformat())
+    result = await db.run(
+        query,
+        item_id=item_id,
+        filepaths=filepaths,
+        updated_at=datetime.utcnow().isoformat()
+    )
     record = await result.single()
+    if not record:
+        raise HTTPException(status_code=404, detail="Item not found")
     return record["n"]
-
-
