@@ -2,6 +2,7 @@ from fastapi import FastAPI, APIRouter
 from services.neo4j_client import get_neo4j_driver
 from routes import db_CRUD, health,schemas,generics,relationships  # Separate routers
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
@@ -20,8 +21,9 @@ app.include_router(db_CRUD.router,prefix="/api")
 app.include_router(schemas.router,prefix="/api")
 app.include_router(generics.router,prefix="/api")
 app.include_router(relationships.router, prefix="/api")
-for route in app.routes:
-    print(route.path)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# for route in app.routes:
+#     print(route.path)
 
 # Optional: Add shutdown handler
 @app.on_event("shutdown")
