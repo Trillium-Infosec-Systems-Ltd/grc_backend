@@ -89,7 +89,7 @@ async def upload_and_attach_files(
     files: List[UploadFile] = File(...),
     db: AsyncSession = Depends(get_db)
 ):
-    BASE_UPLOAD_DIR = "uploads"
+    BASE_UPLOAD_DIR = "static/uploads"
     target_dir = os.path.join(BASE_UPLOAD_DIR)
     os.makedirs(target_dir, exist_ok=True)
 
