@@ -5,7 +5,7 @@ __pycache__/
 
 # C extensions
 *.so
-# app/uploads
+app/static/uploads
 # Distribution / packaging
 .Python
 build/
