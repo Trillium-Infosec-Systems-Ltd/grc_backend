@@ -1,6 +1,6 @@
 
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Response,Request
 from fastapi.responses import FileResponse
 from neo4j import AsyncSession
 from services.db_CRUD import GenericCRUD
@@ -14,6 +14,7 @@ from services.schema_loader import load_schema
 import csv
 import io
 import os
+
 
 
 
@@ -118,4 +119,62 @@ async def generate_csv_template(node_type: str):
         return {"error": str(e)}
     
 
+
+
+
+
+
+@router.get("/export_csv/{doctype}")
+async def export_csv(
+    doctype: str,
+    request: Request,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(1000, ge=1, le=10000),
+    db: AsyncSession = Depends(get_db)
+):
+    filters = dict(request.query_params)
+    filters.pop("skip", None)
+    filters.pop("limit", None)
+
+    crud = GenericCRUD(db, doctype)
+
+    try:
+        # Get data
+        data_response = await crud.get_all(skip=skip, limit=limit, filters=filters)
+        items = data_response["items"]
+        if not items:
+            raise HTTPException(status_code=404, detail="No data to export")
+
+        # Load schema fieldnames
+        schema = load_schema(doctype)
+        schema_fields = [f["label"] for f in schema["fields"] if not f.get("hidden", False)]
+
+        # Get all possible fields from data
+        actual_fields = set()
+        for item in items:
+            actual_fields.update(item.keys())
+
+        # Combine both schema + actual fields
+        all_fields = list(set(schema_fields).union(actual_fields))
+
+        # Prepare CSV
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=all_fields, extrasaction='ignore')
+        writer.writeheader()
+
+        for item in items:
+            row = {}
+            for field in all_fields:
+                value = item.get(field)
+                if isinstance(value, list):
+                    value = ", ".join(map(str, value))  # convert list to CSV-safe string
+                row[field] = value if value is not None else ""
+            writer.writerow(row)
+
+        response = Response(content=output.getvalue(), media_type="text/csv")
+        response.headers["Content-Disposition"] = f"attachment; filename={doctype}.csv"
+        return response
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
