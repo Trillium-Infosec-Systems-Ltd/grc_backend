@@ -108,7 +108,7 @@ async def upload_and_attach_files(
         url_path = f"http://127.0.0.1:8000/{filepath.replace(os.sep, '/')}"
         filepaths.append(url_path)
 
-    # Update node in Neo4j
+
     query = f"""
     MATCH (n:{doctype} {{id: $item_id}})
     SET n.attachments = coalesce(n.attachments, []) + $filepaths,
