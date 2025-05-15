@@ -66,6 +66,7 @@ class GenericCRUD:
         MATCH (n:{self.doctype})
         {where_str}
         RETURN n
+        ORDER BY n.created_at DESC
         SKIP $skip
         LIMIT $limit
         """
@@ -78,9 +79,6 @@ class GenericCRUD:
             "limit": limit,
             "items": [record["n"] for record in records]
         }
-    
-
-
     async def get_by_id(self, item_id: str):
         query = f"""
         MATCH (n:{self.doctype} {{id: $item_id}})
