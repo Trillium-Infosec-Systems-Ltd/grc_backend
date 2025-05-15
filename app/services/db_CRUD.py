@@ -79,6 +79,18 @@ class GenericCRUD:
             "items": [record["n"] for record in records]
         }
     
+
+
+    async def get_by_id(self, item_id: str):
+        query = f"""
+        MATCH (n:{self.doctype} {{id: $item_id}})
+        RETURN n
+        """
+        result = await self.session.run(query, item_id=item_id)
+        record = await result.single()
+        if record:
+            return record["n"]
+        return None
     async def delete(self, item_id: str):
         query = f"""
         MATCH (n:{self.doctype} {{id: $item_id}})
