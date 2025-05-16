@@ -14,6 +14,14 @@ from services.schema_loader import load_schema
 import csv
 import io
 import os
+from datetime import datetime
+from typing import List
+
+from fastapi import APIRouter, UploadFile, File, HTTPException
+from datetime import datetime
+import os
+import uuid
+from typing import List
 
 
 
@@ -178,3 +186,28 @@ async def export_csv(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
+
+@router.post("/upload_files")
+async def upload_files(files: List[UploadFile] = File(...)):
+    BASE_UPLOAD_DIR = "static/uploads"
+    os.makedirs(BASE_UPLOAD_DIR, exist_ok=True)
+
+    filepaths = []
+
+    for file in files:
+        ext = os.path.splitext(file.filename)[1]  # get extension
+        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+        unique_id = uuid.uuid4().hex[:6]  # add uniqueness
+        new_filename = f"{timestamp}_{unique_id}{ext}"
+        full_path = os.path.join(BASE_UPLOAD_DIR, new_filename)
+
+        with open(full_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+
+        relative_path = full_path.replace(os.sep, "/")  # for URL-friendly path
+        filepaths.append(relative_path)
+
+    return {"uploaded_paths": filepaths}
