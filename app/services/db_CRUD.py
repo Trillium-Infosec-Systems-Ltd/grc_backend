@@ -100,6 +100,22 @@ class GenericCRUD:
         return deleted["deleted_count"]
     
 
+    async def update(self, item_id: str, data: dict):
+        now = datetime.utcnow().isoformat()
+        data["updated_at"] = now
+
+        query = f"""
+        MATCH (n:{self.doctype} {{id: $item_id}})
+        SET n += $data
+        RETURN n
+        """
+        result = await self.session.run(query, item_id=item_id, data=data)
+        record = await result.single()
+        if record:
+            return record["n"]
+        return None
+    
+
 
 
 # --- Service Logic for Link Options ---
