@@ -12,7 +12,7 @@ class GenericCRUD:
         self.doctype = doctype 
  
     async def create(self, data: dict):
-        # Validate against schema fields
+        # Validate required fields from schema
         required_fields = [
             f["fieldname"] for f in self.schema["fields"]
             if f.get("required")
@@ -22,14 +22,24 @@ class GenericCRUD:
             if field not in data:
                 raise ValueError(f"Missing required field: {field}")
 
-        # Add a unique ID if not present
-     
-        data["id"] = str(uuid.uuid4())
+        # Use Counter node for incremental ID
+        id_query = f"""
+        MERGE (c:Counter {{doctype: $doctype}})
+        ON CREATE SET c.current = 1
+        ON MATCH SET c.current = c.current + 1
+        RETURN c.current AS new_id
+        """
+        result = await self.session.run(id_query, doctype=self.doctype)
+        record = await result.single()
+        new_id = record["new_id"]
+        data["id"] = self.doctype+'-'+str(new_id)
 
+        # Add timestamps
         now = datetime.utcnow().isoformat()
         data["created_at"] = now
         data["updated_at"] = now
 
+        # Create node
         query = f"""
         CREATE (n:{self.doctype} $data)
         RETURN n
