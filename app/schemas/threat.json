@@ -1,0 +1,57 @@
+{
+    "doctype": "Threat",
+    "fields": [
+      {
+        "fieldname": "threat_name",
+        "fieldtype": "Data",
+        "label": "Threat Name",
+        "required": true,
+        "display_on_frontend": true,
+        "span": 12,
+        "default_label": true
+      },
+      {
+        "fieldname": "likelihood",
+        "fieldtype": "Select",
+        "label": "Likelihood",
+        "options": ["Rare", "Unlikely", "Possible", "Likely", "Almost Certain"],
+        "required": true,
+        "span": 12,
+        "display_on_frontend": true
+      },
+      {
+        "fieldname": "vulnerabilities",
+        "fieldtype": "MultiLink",
+        "label": "Vulnerabilities",
+        "link_to": "Vulnerability",
+        "display_on_frontend": true,
+        "required": false,
+        "span": 12
+      },
+      {
+        "fieldname": "relevant_controls",
+        "fieldtype": "MultiLink",
+        "label": "Relevant Controls",
+        "link_to": "Control",
+        "display_on_frontend": true,
+        "required": false,
+        "span": 12
+      },
+      {
+        "fieldname": "created_at",
+        "fieldtype": "Datetime",
+        "label": "Created at",
+        "default_label": false,
+        "display_on_frontend": false,
+        "hidden": true
+      },
+      {
+        "fieldname": "updated_at",
+        "fieldtype": "Datetime",
+        "label": "Updated at",
+        "default_label": false,
+        "display_on_frontend": false,
+        "hidden": true
+      }
+    ]
+  }
