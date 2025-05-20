@@ -1,91 +1,173 @@
 {
-    "doctype": "Asset",
-    "fields": [
-      {
-        "fieldname": "asset_name",
-        "fieldtype": "Data",
-        "label": "Asset Name",
-        "default_label":true,
-        "required": true,
-        "display_on_frontend":true,
-        "span" :12,
-        "validation": {
-          "min_length": 2,
-          "max_length": 100
-        }
-      },
-      {
-        "fieldname": "type",
-        "fieldtype": "Select",
-        "label": "Asset Type",
-        "options": ["Database", "Server", "Web Application", "Endpoint Security"],
-        "required": true,
-        "span" :12,
-        "default_label":false,
-        "display_on_frontend":true
-      },
-      {
-        "fieldname": "criticality",
-        "fieldtype": "Select",
-        "label": "Criticality Level",
-        "options": ["Low", "Medium", "High", "Critical"],
-        "required": true,
-        "default_label":false,
-        "span" :12,
-        "display_on_frontend":true,
-        "default": "Medium"
-      },
-      {
-        "fieldname": "ip_hostname",
-        "fieldtype": "Data",
-        "label": "IP/Hostname",
-        "display_on_frontend":true,
-        "required": true,
-        "span" :12,
-        "default_label":false,
-        "validation": {
-          "regex": "^(([0-9]{1,3}\\.){3}[0-9]{1,3}|[a-zA-Z0-9\\-]+(\\.[a-zA-Z0-9\\-]+)+)$"
-        }
-      },
-      {
-        "fieldname": "owner",
-        "fieldtype": "Link",
-        "label": "Asset Owner",
-        "link_to": "User",
-        "span" :12,
-        "default_label":false,
-        "display_on_frontend":true,
-        "required": false
-      },
-      {
-        "fieldname": "update",
-        "fieldtype": "Link",
-        "label": "Asset Owner",
-        "link_to": "User",
-        "span" :12,
-        "default_label":false,
-        "display_on_frontend":true,
-        "required": false
-      },
-      {
-        "fieldname": "updated_at",
-        "fieldtype": "Data",
-        "label": "Updated at",
-        "span" :12,
-        "default_label":false,
-        "display_on_frontend":false,
-        "required": false,
-        "hidden":true
-      },
-      {
-        "fieldname": "created_at",
-        "fieldtype": "Data",
-        "label": "Created at",
-        "link_to": "User",
-        "span" :12,
-        "default_label":false,
-        "display_on_frontend":false,
-        "hidden":true
+  "doctype": "Asset",
+  "fields": [
+    {
+      "fieldname": "asset_name",
+      "fieldtype": "Data",
+      "label": "Asset Name",
+      "default_label": true,
+      "required": true,
+      "display_on_frontend": true,
+      "span": 12,
+      "validation": {
+        "min_length": 2,
+        "max_length": 100
       }
-    ]
-  }
+    },
+    {
+      "fieldname": "type",
+      "fieldtype": "Select",
+      "label": "Asset Type",
+      "options": ["Database", "Server", "Web Application", "Endpoint Security"],
+      "required": true,
+      "span": 12,
+      "default_label": false,
+      "display_on_frontend": true
+    },
+    {
+      "fieldname": "criticality",
+      "fieldtype": "Select",
+      "label": "Criticality Level",
+      "options": ["Low", "Medium", "High", "Critical"],
+      "required": true,
+      "default_label": false,
+      "span": 12,
+      "display_on_frontend": true,
+      "default": "Medium"
+    },
+    {
+      "fieldname": "environment",
+      "fieldtype": "Select",
+      "label": "Environment",
+      "options": ["Staging", "Dev", "Production"],
+      "required": true,
+      "default_label": false,
+      "span": 12,
+      "display_on_frontend": true,
+      "default": "Staging"
+    },
+    {
+      "fieldname": "exposure",
+      "fieldtype": "Select",
+      "label": "Exposure Level",
+      "options": ["Internal", "External"],
+      "required": true,
+      "default_label": false,
+      "span": 12,
+      "display_on_frontend": true,
+      "default": "Internal"
+    },
+    {
+      "fieldname": "department",
+      "fieldtype": "Select",
+      "label": "Department",
+      "options": ["Finance", "IT", "HR", "Operations", "Legal", "SOC Team"],
+      "display_on_frontend": true,
+      "span": 12,
+      "required": true
+    },
+    {
+      "fieldname": "ip_hostname",
+      "fieldtype": "Data",
+      "label": "IP/Hostname",
+      "display_on_frontend": true,
+      "required": false,
+      "span": 12,
+      "default_label": false,
+      "validation": {
+        "regex": "^(([0-9]{1,3}\\.){3}[0-9]{1,3}|[a-zA-Z0-9\\-]+(\\.[a-zA-Z0-9\\-]+)+)$"
+      }
+    },
+    {
+      "fieldname": "owner",
+      "fieldtype": "Link",
+      "label": "Asset Owner",
+      "link_to": "User",
+      "span": 12,
+      "default_label": false,
+      "display_on_frontend": true,
+      "required": false
+    },
+    {
+      "fieldname": "contains_sensitive_data",
+      "fieldtype": "Boolean",
+      "label": "Contains Sensitive Data",
+      "display_on_frontend": true,
+      "required": true,
+      "span": 12
+    },
+    {
+      "fieldname": "confidentiality_score",
+      "fieldtype": "Select",
+      "label": "Confidentiality Score",
+      "options": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+      "display_on_frontend": true,
+      "required": false,
+      "span": 12
+    },
+    {
+      "fieldname": "integrity_score",
+      "fieldtype": "Select",
+      "label": "Integrity Score",
+      "options": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+      "display_on_frontend": true,
+      "required": false,
+      "span": 12
+    },
+    {
+      "fieldname": "availability_score",
+      "fieldtype": "Select",
+      "label": "Availability Score",
+      "options": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+      "display_on_frontend": true,
+      "required": false,
+      "span": 12
+    },
+    {
+      "fieldname": "notes",
+      "fieldtype": "Text",
+      "label": "Notes",
+      "display_on_frontend": true,
+      "required": false,
+      "span": 12
+    },
+    {
+      "fieldname": "security_controls",
+      "fieldtype": "MultiSelect",
+      "label": "Security Controls Categories Present",
+      "options": ["Annex A.5.9", "Annex A.5.9.2", "Annex A.5.12"],
+      "display_on_frontend": true,
+      "required": false,
+      "span": 12
+    },
+    {
+      "fieldname": "update",
+      "fieldtype": "Link",
+      "label": "Last Updated By",
+      "link_to": "User",
+      "span": 12,
+      "default_label": false,
+      "display_on_frontend": false,
+      "required": false
+    },
+    {
+      "fieldname": "updated_at",
+      "fieldtype": "Datetime",
+      "label": "Updated at",
+      "span": 12,
+      "default_label": false,
+      "display_on_frontend": false,
+      "required": false,
+      "hidden": true
+    },
+    {
+      "fieldname": "created_at",
+      "fieldtype": "Datetime",
+      "label": "Created at",
+      "span": 12,
+      "default_label": false,
+      "display_on_frontend": false,
+      "hidden": true
+    }
+  ]
+}
