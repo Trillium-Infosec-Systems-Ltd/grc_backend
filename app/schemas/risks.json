@@ -1,159 +1,249 @@
 {
-    "doctype": "Risk",
-    "fields": [
-      {
-        "fieldname": "risk_name",
-        "fieldtype": "Data",
-        "label": "Risk Name",
-        "display_on_frontend":true,
-        "required": true,
-        "span" :12,
-        "validation": {
-          "min_length": 5,
-          "max_length": 200
-        }
-      },
-      {
-        "fieldname": "risk_category",
-        "fieldtype": "Select",
-        "label": "Risk Category",
-        "options": ["Security", "Compliance", "Operational", "Financial", "Strategic"],
-        "display_on_frontend":false,
-        "required": true,
-        "span" :12,
-        "default": "Security"
-      },
-      {
-        "fieldname": "risk_likelihood",
-        "fieldtype": "Select",
-        "label": "Likelihood",
-        "options": ["Low", "Medium", "High", "Critical"],
-        "display_on_frontend":true,
-        "span" :12,
-        "required": true
-      },
-      {
-        "fieldname": "risk_impact",
-        "fieldtype": "Select",
-        "label": "Impact",
-        "options": ["Low", "Medium", "High", "Critical"],
-        "display_on_frontend":false,
-        "span" :12,
-        "required": true
-      },
-      {
-        "fieldname": "related_assets",
-        "fieldtype": "MultiLink",
-        "label": "Related Assets",
-        "link_to": "Asset",
-        "span" :12,
-        "display_on_frontend":false,
-        "required": true
-      },
-      {
-        "fieldname": "department",
-        "fieldtype": "Select",
-        "label": "Department",
-        "options": ["Finance", "IT", "HR", "Operations", "Legal"],
-        "display_on_frontend":false,
-        "span" :12,
-        "required": true
-      },
-      {
-        "fieldname": "risk_description",
-        "fieldtype": "LongText",
-        "label": "Risk Description",
-        "display_on_frontend":false,
-        "span" :12,
-        "required": true
-      },
-      {
-        "fieldname": "owner",
-        "fieldtype": "Link",
-        "label": "Owner",
-        "link_to": "User",
-        "display_on_frontend":true,
-        "span" :12,
-        "required": true
-      },
-      {
-        "fieldname": "date_identified",
-        "fieldtype": "Date",
-        "label": "Date Identified",
-        "display_on_frontend":false,
-        "span" :12,
-        "required": true
-      },
-      {
-        "fieldname": "related_vulnerabilities",
-        "fieldtype": "Tags",
-        "label": "Related Vulnerabilities (CVEs)",
-        "display_on_frontend":false,
-        "span" :12,
-        "required": false
-      },
-      {
-        "fieldname": "risk_decision",
-        "fieldtype": "Select",
-        "label": "Risk Decision",
-        "options": ["Accept", "Mitigate", "Transfer", "Avoid"],
-        "display_on_frontend":true,
-        "span" :12,
-        "required": true
-      },
-      {
-        "fieldname": "treatment_plan",
-        "fieldtype": "LongText",
-        "label": "Treatment Plan",
-        "display_on_frontend":false,
-        "span" :12,
-        "required": false
-      },
-      {
-        "fieldname": "residual_risk",
-        "fieldtype": "Select",
-        "label": "Residual Risk",
-        "options": ["Low", "Medium", "High"],
-        "display_on_frontend":true,
-        "span" :12,
-        "required": false
-      },
-      {
-        "fieldname": "review_date",
-        "fieldtype": "Date",
-        "label": "Review Date",
-        "display_on_frontend":false,
-        "span" :12,
-        
-        "required": true
-      },
-      {
-        "fieldname": "attachments",
-        "fieldtype": "File",
-        "label": "Supporting Evidence",
-        "display_on_frontend":false,
-        "span" :12,
-        "required": false
-      },
-      {
-        "fieldname": "updated_at",
-        "fieldtype": "Data",
-        "label": "Updated at",
-        "default_label":false,
-        "display_on_frontend":false,
-        "span" :12,
-        "required": false,
-        "hidden":true
-      },
-      {
-        "fieldname": "created_at",
-        "fieldtype": "Data",
-        "label": "Created at",
-        "default_label":false,
-        "display_on_frontend":false,
-        "span" :12,
-        "required": false,
-        "hidden":true
+  "doctype": "Risk",
+  "fields": [
+    {
+      "fieldname": "risk_name",
+      "fieldtype": "Data",
+      "label": "Risk Name",
+      "display_on_frontend": true,
+      "required": true,
+      "span": 12,
+      "validation": {
+        "min_length": 5,
+        "max_length": 200
       }
-    ]
-  }
+    },
+    {
+      "fieldname": "risk_category",
+      "fieldtype": "Select",
+      "label": "Risk Category",
+      "options": ["Security", "Compliance", "Operational", "Financial", "Strategic"],
+      "display_on_frontend": false,
+      "required": true,
+      "span": 12,
+      "default": "Security"
+    },
+    {
+      "fieldname": "risk_likelihood",
+      "fieldtype": "Select",
+      "label": "Likelihood",
+      "options": ["Low", "Medium", "High", "Critical"],
+      "display_on_frontend": true,
+      "span": 12,
+      "required": true
+    },
+    {
+      "fieldname": "risk_impact",
+      "fieldtype": "Select",
+      "label": "Impact",
+      "options": ["Low", "Medium", "High", "Critical"],
+      "display_on_frontend": false,
+      "span": 12,
+      "required": true
+    },
+    {
+      "fieldname": "associated_assets",
+      "fieldtype": "MultiLink",
+      "label": "Associated Assets",
+      "link_to": "Asset",
+      "relationship_type": "POSESSESSES_RISK",
+      "relation_direction": "incoming",
+      "span": 12,
+      "display_on_frontend": false,
+      "required": true
+    },
+    {
+      "fieldname": "department",
+      "fieldtype": "Select",
+      "label": "Department",
+      "options": ["Finance", "IT", "HR", "Operations", "Legal"],
+      "display_on_frontend": false,
+      "span": 12,
+      "required": true
+    },
+    {
+      "fieldname": "risk_description",
+      "fieldtype": "LongText",
+      "label": "Risk Description",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": true
+    },
+    {
+      "fieldname": "owner",
+      "fieldtype": "Link",
+      "label": "Owner",
+      "link_to": "User",
+      "relationship_type": "OWNS",
+      "relation_direction": "incoming",
+      "display_on_frontend": true,
+      "span": 12,
+      "required": true
+    },
+    {
+      "fieldname": "date_identified",
+      "fieldtype": "Date",
+      "label": "Date Identified",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": true
+    },
+    {
+      "fieldname": "related_vulnerabilities",
+      "fieldtype": "Tags",
+      "label": "Related Vulnerabilities (CVEs)",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "risk_decision",
+      "fieldtype": "Select",
+      "label": "Risk Decision",
+      "options": ["Accept", "Mitigate", "Transfer", "Avoid"],
+      "display_on_frontend": true,
+      "span": 12,
+      "required": true
+    },
+    {
+      "fieldname": "treatment_plan",
+      "fieldtype": "LongText",
+      "label": "Treatment Plan",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "residual_risk",
+      "fieldtype": "Select",
+      "label": "Residual Risk",
+      "options": ["Low", "Medium", "High"],
+      "display_on_frontend": true,
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "review_date",
+      "fieldtype": "Date",
+      "label": "Review Date",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": true
+    },
+    {
+      "fieldname": "attachments",
+      "fieldtype": "File",
+      "label": "Supporting Evidence",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "control_ids",
+      "fieldtype": "MultiLink",
+      "label": "Control ID(s)",
+      "link_to": "Control",
+      "relationship_type": "MITIGATES",
+      "relation_direction": "incoming",
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "targeted_risks",
+      "fieldtype": "MultiLink",
+      "label": "Targeted Risk(s)",
+      "link_to": "Risk",
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "control_category",
+      "fieldtype": "Select",
+      "label": "Control Category",
+      "options": ["Preventive", "Detective", "Corrective"],
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "task_status",
+      "fieldtype": "Select",
+      "label": "Task Status",
+      "options": ["Not Started", "In Progress", "Completed"],
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "priority",
+      "fieldtype": "Select",
+      "label": "Priority",
+      "options": ["Low", "Medium", "High", "Critical"],
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "review_frequency",
+      "fieldtype": "Select",
+      "label": "Review Frequency",
+      "options": ["Monthly", "Quarterly", "Annually"],
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "due_date",
+      "fieldtype": "Date",
+      "label": "Due Date",
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "implementation_plan",
+      "fieldtype": "LongText",
+      "label": "Implementation Plan",
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "linked_clause",
+      "fieldtype": "Link",
+      "label": "Linked Clause or Policy",
+      "link_to": "Clause",
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "dependencies",
+      "fieldtype": "Link",
+      "label": "Dependencies",
+      "link_to": "Task",
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "notes",
+      "fieldtype": "LongText",
+      "label": "Notes",
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "updated_at",
+      "fieldtype": "Data",
+      "label": "Updated at",
+      "default_label": false,
+      "display_on_frontend": false,
+      "span": 12,
+      "required": false,
+      "hidden": true
+    },
+    {
+      "fieldname": "created_at",
+      "fieldtype": "Data",
+      "label": "Created at",
+      "default_label": false,
+      "display_on_frontend": false,
+      "span": 12,
+      "required": false,
+      "hidden": true
+    }
+  ]
+}

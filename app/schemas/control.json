@@ -40,7 +40,7 @@
       "fieldname": "compliance_status",
       "fieldtype": "Select",
       "label": "Compliance Status",
-      "options": ["Compliant", "Partially Compliant", "Non-Compliant", "Not Applicable"],
+      "options": ["Non-Compliant","Partially Compliant","Compliant" ],
       "required": true,
       "span": 12,
       "display_on_frontend": true

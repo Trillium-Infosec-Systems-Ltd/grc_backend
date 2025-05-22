@@ -83,6 +83,8 @@
       "fieldtype": "Link",
       "label": "Asset Owner",
       "link_to": "User",
+      "relationship_direction":"incoming",
+      "relationship_type":"owns",
       "span": 12,
       "default_label": false,
       "display_on_frontend": true,
@@ -90,7 +92,7 @@
     },
     {
       "fieldname": "contains_sensitive_data",
-      "fieldtype": "Boolean",
+      "fieldtype": "Radio",
       "label": "Contains Sensitive Data",
       "display_on_frontend": true,
       "required": true,
@@ -131,11 +133,15 @@
       "required": false,
       "span": 12
     },
+
     {
       "fieldname": "security_controls",
-      "fieldtype": "MultiSelect",
+      "fieldtype": "MultiLink",
       "label": "Security Controls Categories Present",
-      "options": ["Annex A.5.9", "Annex A.5.9.2", "Annex A.5.12"],
+      "link_to": "control",
+      "relationship_type": "HAS_CONTROL",
+      "relation_direction": "outgoing",
+
       "display_on_frontend": true,
       "required": false,
       "span": 12

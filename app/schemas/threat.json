@@ -24,6 +24,8 @@
         "fieldtype": "MultiLink",
         "label": "Vulnerabilities",
         "link_to": "Vulnerability",
+        "relationship_type": "CAUSES_THREAT",
+        "relation_direction": "incoming",
         "display_on_frontend": true,
         "required": false,
         "span": 12
@@ -33,6 +35,8 @@
         "fieldtype": "MultiLink",
         "label": "Relevant Controls",
         "link_to": "Control",
+        "relationship_type": "MITIGATES",
+        "relation_direction": "incoming",
         "display_on_frontend": true,
         "required": false,
         "span": 12
