@@ -4,6 +4,8 @@ from routes import db_CRUD, health,schemas,generics,relationships  # Separate ro
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+
+
 app = FastAPI()
 
 
