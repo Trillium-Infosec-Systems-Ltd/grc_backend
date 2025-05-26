@@ -3,6 +3,8 @@ from services.neo4j_client import get_neo4j_driver
 from routes import db_CRUD, health,schemas,generics,relationships  # Separate routers
 from fastapi.middleware.cors import CORSMiddleware
 
+
+
 app = FastAPI()
 
 
