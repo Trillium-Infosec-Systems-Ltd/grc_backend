@@ -33,7 +33,8 @@
       "fieldname": "owner",
       "fieldtype": "Link",
       "label": "Control Owner",
-      "link_to": "User",
+      "link_to": "users",
+       "target_field":"name",
       "span": 12,
       "display_on_frontend": false,
       "required": true
@@ -121,14 +122,14 @@
     },
     {
       "fieldname": "description",
-      "fieldtype": "Text",
+      "fieldtype": "LongText",
       "label": "Description",
       "span": 12,
       "display_on_frontend": true
     },
     {
       "fieldname": "attached_files",
-      "fieldtype": "MultiFileUpload",
+      "fieldtype": "File",
       "label": "Attached Evidence / Files",
       "span": 12,
       "display_on_frontend": false
