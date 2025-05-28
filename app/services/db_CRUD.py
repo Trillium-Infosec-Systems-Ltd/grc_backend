@@ -5,6 +5,7 @@ import uuid
 from neo4j import AsyncDriver
 import json
 from datetime import datetime
+from typing import Any, Dict
 
 
 
@@ -16,7 +17,7 @@ class GenericCRUD:
         self.doctype = doctype 
 
     async def create(self, data: dict):
-        # Validate required fields from schema
+        # Validate required fields
         required_fields = [
             f["fieldname"] for f in self.schema["fields"]
             if f.get("required")
@@ -26,9 +27,9 @@ class GenericCRUD:
             if field not in data:
                 raise ValueError(f"Missing required field: {field}")
 
-        # Use Counter node for incremental ID
-        id_query = f"""
-        MERGE (c:Counter {{doctype: $doctype}})
+        # Generate new ID
+        id_query = """
+        MERGE (c:Counter {doctype: $doctype})
         ON CREATE SET c.current = 1
         ON MATCH SET c.current = c.current + 1
         RETURN c.current AS new_id
@@ -36,21 +37,56 @@ class GenericCRUD:
         result = await self.session.run(id_query, doctype=self.doctype)
         record = await result.single()
         new_id = record["new_id"]
-        data["id"] = self.doctype+'-'+str(new_id)
+        data["id"] = f"{self.doctype}-{new_id}"
 
         # Add timestamps
         now = datetime.utcnow().isoformat()
         data["created_at"] = now
         data["updated_at"] = now
 
-        # Create node
+        # Create node and return it
         query = f"""
         CREATE (n:{self.doctype} $data)
         RETURN n
         """
         result = await self.session.run(query, data=data)
-        return await result.single()
+        record = await result.single()
+        node = record["n"]  # This line caused error earlier if no record
 
+        # Create Link and MultiLink relationships
+        for field in self.schema["fields"]:
+            if field.get("fieldtype") not in ["Link", "MultiLink"]:
+                continue
+
+            fieldname = field.get("fieldname")
+            target_value = data.get(fieldname)
+            if not target_value:
+                continue
+
+            target_doctype = field["link_to"]
+            target_field = field["target_field"]
+            relationship_type = field.get("relationship_type", "RELATED_TO").upper()
+            direction = field.get("relationship_direction", "outgoing")
+
+            values = target_value if isinstance(target_value, list) else [target_value]
+
+            for val in values:
+                if direction == "incoming":
+                    relation_query = f"""
+                    MATCH (target:{target_doctype} {{{target_field}: $val}})
+                    MATCH (source:{self.doctype} {{id: $source_id}})
+                    MERGE (target)-[r:{relationship_type}]->(source)
+                    """
+                else:
+                    relation_query = f"""
+                    MATCH (target:{target_doctype} {{{target_field}: $val}})
+                    MATCH (source:{self.doctype} {{id: $source_id}})
+                    MERGE (source)-[r:{relationship_type}]->(target)
+                    """
+                await self.session.run(relation_query, val=val, source_id=data["id"])
+
+        return {"n": node, "id": data["id"]}
+        
     async def get_all(self, skip: int = 0, limit: int = 10, filters: dict = None):
         filters = filters or {}
 
@@ -131,6 +167,3 @@ class GenericCRUD:
 
 
 
-
-# --- Service Logic for Link Options ---
- 

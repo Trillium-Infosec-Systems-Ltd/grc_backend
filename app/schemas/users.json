@@ -8,6 +8,7 @@
         "fieldname": "name",
         "fieldtype": "Data",
         "label": "Full Name",
+        "default_label": true,
         "display_on_frontend":true,
         "required": true,
         "span" :12,

@@ -56,7 +56,7 @@
       "default_label": false,
       "span": 12,
       "display_on_frontend": true,
-      "default": "Internal"
+      "defaultValue": "Internal"
     },
     {
       "fieldname": "department",
@@ -83,7 +83,8 @@
       "fieldname": "owner",
       "fieldtype": "Link",
       "label": "Asset Owner",
-      "link_to": "User",
+      "link_to": "users",
+      "target_field":"name",
       "relationship_direction":"incoming",
       "relationship_type":"owns",
       "span": 12,
@@ -95,9 +96,11 @@
       "fieldname": "contains_sensitive_data",
       "fieldtype": "Radio",
       "label": "Contains Sensitive Data",
+      "options":[ "Yes", "No" ],
       "display_on_frontend": true,
       "required": true,
-      "span": 12
+      "span": 12,
+      "default": "Yes"
     },
     {
       "fieldname": "confidentiality_score",
@@ -140,6 +143,7 @@
       "fieldtype": "MultiLink",
       "label": "Security Controls Categories Present",
       "link_to": "control",
+       "target_field":"control_name",
       "relationship_type": "HAS_CONTROL",
       "relation_direction": "outgoing",
 
@@ -151,7 +155,8 @@
       "fieldname": "update",
       "fieldtype": "Link",
       "label": "Last Updated By",
-      "link_to": "User",
+      "link_to": "users",
+       "target_field":"name",
       "span": 12,
       "default_label": false,
       "display_on_frontend": false,

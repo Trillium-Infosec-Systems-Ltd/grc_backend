@@ -79,7 +79,7 @@
       },
       {
         "fieldname": "attached_files",
-        "fieldtype": "MultiFileUpload",
+        "fieldtype": "File",
         "label": "Attached Evidence / Files",
         "display_on_frontend": true,
         "span": 12
