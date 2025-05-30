@@ -1,0 +1,71 @@
+{
+    "doctype": "asset_type",
+    "fields": [
+      {
+        "fieldname": "type_name",
+        "fieldtype": "Data",
+        "label": "Type Name",
+        "default_label": true,
+        "required": true,
+        "display_on_frontend": true,
+        "span": 12,
+        "validation": {
+          "min_length": 2,
+          "max_length": 100
+        }
+      },
+      {
+        "fieldname": "owner",
+        "fieldtype": "Link",
+        "label": "Owner",
+        "link_to": "users",
+        "target_field": "name",
+        "relationship_type": "owns",
+        "relationship_direction": "incoming",
+        "required": true,
+        "default_label": false,
+        "display_on_frontend": true,
+        "span": 12
+      },
+      {
+        "fieldname": "department",
+        "fieldtype": "Select",
+        "label": "Department",
+        "options": ["Finance", "IT", "HR", "Operations", "Legal", "SOC Team"],
+        "display_on_frontend": true,
+        "required": true,
+        "span": 12
+      },
+      {
+        "fieldname": "criticality",
+        "fieldtype": "Select",
+        "label": "Criticality",
+        "options": ["Low", "Medium", "High", "Critical"],
+        "default": "Medium",
+        "display_on_frontend": true,
+        "required": true,
+        "span": 12
+      },
+      {
+        "fieldname": "created_at",
+        "fieldtype": "Datetime",
+        "label": "Created at",
+        "span": 12,
+        "default_label": false,
+        "display_on_frontend": false,
+        "required": false,
+        "hidden": true
+      },
+      {
+        "fieldname": "updated_at",
+        "fieldtype": "Datetime",
+        "label": "Updated at",
+        "span": 12,
+        "default_label": false,
+        "display_on_frontend": false,
+        "required": false,
+        "hidden": true
+      }
+    ]
+  }
+  

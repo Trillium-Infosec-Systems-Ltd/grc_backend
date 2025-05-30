@@ -1,0 +1,14 @@
+{
+    "doctype": "control_question",
+    "fields": [
+      {
+        "fieldname": "question",
+        "fieldtype": "Data",
+        "label": "Control Question",
+        "display_on_frontend": true,
+        "span": 12,
+        "required": true
+      }
+    
+    ]
+}
