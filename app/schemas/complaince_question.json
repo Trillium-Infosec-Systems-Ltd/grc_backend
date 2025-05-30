@@ -1,12 +1,12 @@
 {
-    "doctype": "control_question",
+    "doctype": "compliance_question",
     "fields": [
       {
         "fieldname": "question",
         "fieldtype": "Data",
-        "label": "Control Question",
+        "label": "Compliance Question",
         "display_on_frontend": true,
-        "span": 12,
+        "span": 24,
         "required": true
       }
     

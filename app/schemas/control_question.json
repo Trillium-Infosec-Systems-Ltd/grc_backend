@@ -6,7 +6,7 @@
         "fieldtype": "Data",
         "label": "Control Question",
         "display_on_frontend": true,
-        "span": 12,
+        "span": 24,
         "required": true
       }
     
