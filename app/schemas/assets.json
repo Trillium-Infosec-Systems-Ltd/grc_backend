@@ -133,6 +133,7 @@
       "fieldname": "notes",
       "fieldtype": "Text",
       "label": "Notes",
+      "content": "",
       "display_on_frontend": true,
       "required": false,
       "span": 12
