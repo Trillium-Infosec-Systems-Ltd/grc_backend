@@ -3,11 +3,31 @@
     "fields": [
       {
         "fieldname": "question",
+        "score":1,
         "fieldtype": "Data",
         "label": "Compliance Question",
         "display_on_frontend": true,
         "span": 24,
         "required": true
+      },      {
+        "fieldname": "created_at",
+        "fieldtype": "Datetime",
+        "label": "Created at",
+        "span": 12,
+        "default_label": false,
+        "display_on_frontend": false,
+        "required": false,
+        "hidden": true
+      },
+      {
+        "fieldname": "updated_at",
+        "fieldtype": "Datetime",
+        "label": "Updated at",
+        "span": 12,
+        "default_label": false,
+        "display_on_frontend": false,
+        "required": false,
+        "hidden": true
       }
     
     ]
