@@ -1,0 +1,14 @@
+{
+    "doctype": "department",
+    "fields": [
+      {
+        "fieldname": "department_name",
+        "fieldtype": "Data",
+        "label": "Department Name",
+        "display_on_frontend": true,
+        "span": 12,
+        "required": true
+      }
+    
+    ]
+}
