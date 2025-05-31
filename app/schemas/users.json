@@ -41,8 +41,8 @@
         "fieldname": "department",
         "fieldtype": "Link",
         "label": "Department",
-        "link_to": "Department",
-        "target_field":"name",
+        "link_to": "department",
+        "target_field":"department_name",
         "display_on_frontend":true,
         "span" :12,
         "required": false
