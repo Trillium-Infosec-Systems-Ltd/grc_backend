@@ -89,7 +89,6 @@ class GenericCRUD:
         
     async def get_all(self, skip: int = 0, limit: int = 10, filters: dict = None):
         filters = filters or {}
-
         where_clauses = []
         params = {"skip": skip, "limit": limit}
 
@@ -99,10 +98,6 @@ class GenericCRUD:
             params[param_key] = value
 
         where_str = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
-
-        print("Filters received:", filters)
-        print("Final params:", params)
-        print("Where clause:", where_str)
 
         count_query = f"""
         MATCH (n:{self.doctype})
@@ -115,7 +110,19 @@ class GenericCRUD:
         data_query = f"""
         MATCH (n:{self.doctype})
         {where_str}
-        RETURN n
+        OPTIONAL MATCH (source)-[r1]->(n)
+        OPTIONAL MATCH (n)-[r2]->(target)
+        RETURN n,
+            collect({{
+                direction: "incoming",
+                type: type(r1),
+                node: source
+            }}) +
+            collect({{
+                direction: "outgoing",
+                type: type(r2),
+                node: target
+            }}) AS relationships
         ORDER BY n.created_at DESC
         SKIP $skip
         LIMIT $limit
@@ -127,17 +134,39 @@ class GenericCRUD:
             "total": total,
             "skip": skip,
             "limit": limit,
-            "items": [record["n"] for record in records]
+            "items": [
+                {
+                    "node": record["n"],
+                    "relationships": record["relationships"]
+                }
+                for record in records
+            ]
         }
     async def get_by_id(self, item_id: str):
         query = f"""
         MATCH (n:{self.doctype} {{id: $item_id}})
-        RETURN n
+        OPTIONAL MATCH (source)-[r1]->(n)
+        OPTIONAL MATCH (n)-[r2]->(target)
+
+        RETURN n,
+            collect({{
+                direction: "incoming",
+                type: type(r1),
+                node: source
+            }}) + 
+            collect({{
+                direction: "outgoing",
+                type: type(r2),
+                node: target
+            }}) AS relationships
         """
         result = await self.session.run(query, item_id=item_id)
         record = await result.single()
         if record:
-            return record["n"]
+            return {
+                "node": record["n"],
+                "relationships": record["relationships"]
+            }
         return None
     async def delete(self, item_id: str):
         query = f"""
