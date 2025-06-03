@@ -84,7 +84,7 @@
       "fieldtype": "Link",
       "label": "Asset Owner",
       "link_to": "users",
-      "target_field":"id",
+      "target_field":"name",
       "relationship_direction":"incoming",
       "relationship_type":"owns",
       "span": 12,
@@ -144,7 +144,7 @@
       "fieldtype": "MultiLink",
       "label": "Security Controls Categories Present",
       "link_to": "control",
-       "target_field":"control_name",
+      "target_field":"control_name",
       "relationship_type": "HAS_CONTROL",
       "relation_direction": "outgoing",
 

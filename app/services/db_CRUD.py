@@ -51,7 +51,7 @@ class GenericCRUD:
         """
         result = await self.session.run(query, data=data)
         record = await result.single()
-        node = record["n"]  # This line caused error earlier if no record
+        node = record["n"]
 
         # Create Link and MultiLink relationships
         for field in self.schema["fields"]:
@@ -64,9 +64,11 @@ class GenericCRUD:
                 continue
 
             target_doctype = field["link_to"]
-            target_field = field["target_field"]
             relationship_type = field.get("relationship_type", "RELATED_TO").upper()
             direction = field.get("relationship_direction", "outgoing")
+
+            # Always match using 'id' field
+            target_field = "id"
 
             values = target_value if isinstance(target_value, list) else [target_value]
 
@@ -99,6 +101,7 @@ class GenericCRUD:
 
         where_str = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
 
+        # Get total count
         count_query = f"""
         MATCH (n:{self.doctype})
         {where_str}
@@ -107,6 +110,7 @@ class GenericCRUD:
         count_result = await self.session.run(count_query, **params)
         total = (await count_result.single())["total"]
 
+        # Get main data with incoming/outgoing relationships
         data_query = f"""
         MATCH (n:{self.doctype})
         {where_str}
@@ -123,24 +127,57 @@ class GenericCRUD:
                 type: type(r2),
                 node: target
             }}) AS relationships
-        ORDER BY n.created_at DESC
+        ORDER BY n.created_at ASC
         SKIP $skip
         LIMIT $limit
         """
         data_result = await self.session.run(data_query, **params)
         records = await data_result.data()
 
+        items = []
+
+        for record in records:
+            node = dict(record["n"])
+            relationships = record["relationships"]
+
+            # Enhance node fields by resolving target_field values
+            for field in self.schema["fields"]:
+                fieldname = field.get("fieldname")
+                fieldtype = field.get("fieldtype")
+                target_doctype = field.get("link_to")
+                target_field = field.get("target_field", "name")
+                rel_type = field.get("relationship_type", "").upper()
+                direction = field.get("relationship_direction", field.get("relation_direction", "outgoing"))
+
+                if fieldtype not in ["Link", "MultiLink"]:
+                    continue
+
+                matched_nodes = []
+                for rel in relationships:
+                    if rel["type"] != rel_type:
+                        continue
+                    if direction == "incoming" and rel["direction"] != "incoming":
+                        continue
+                    if direction == "outgoing" and rel["direction"] != "outgoing":
+                        continue
+                    if rel["node"].get("id", "").startswith(target_doctype):
+                        matched_nodes.append(rel["node"])
+
+                if fieldtype == "Link":
+                    node[fieldname] = matched_nodes[0].get(target_field) if matched_nodes else None
+                elif fieldtype == "MultiLink":
+                    node[fieldname] = ", ".join([n.get(target_field) for n in matched_nodes if target_field in n])
+
+            items.append({
+                "node": node,
+                "relationships": relationships
+            })
+
         return {
             "total": total,
             "skip": skip,
             "limit": limit,
-            "items": [
-                {
-                    "node": record["n"],
-                    "relationships": record["relationships"]
-                }
-                for record in records
-            ]
+            "items": items
         }
     async def get_by_id(self, item_id: str):
         query = f"""
@@ -180,9 +217,11 @@ class GenericCRUD:
     
 
     async def update(self, item_id: str, data: dict):
+        # Add updated timestamp
         now = datetime.utcnow().isoformat()
         data["updated_at"] = now
 
+        # Update node properties
         query = f"""
         MATCH (n:{self.doctype} {{id: $item_id}})
         SET n += $data
@@ -190,9 +229,67 @@ class GenericCRUD:
         """
         result = await self.session.run(query, item_id=item_id, data=data)
         record = await result.single()
-        if record:
-            return record["n"]
-        return None
-    
+        if not record:
+            return None
 
+        node = record["n"]
 
+        # Remove existing Link/MultiLink relationships only for fields being updated
+        for field in self.schema["fields"]:
+            if field.get("fieldtype") not in ["Link", "MultiLink"]:
+                continue
+
+            fieldname = field.get("fieldname")
+            if fieldname not in data:
+                continue  # Only update if field is provided in the update request
+
+            target_doctype = field["link_to"]
+            relationship_type = field.get("relationship_type", "RELATED_TO").upper()
+            direction = field.get("relationship_direction", "outgoing")
+
+            if direction == "incoming":
+                delete_query = f"""
+                MATCH (target:{target_doctype})-[r:{relationship_type}]->(n:{self.doctype} {{id: $item_id}})
+                DELETE r
+                """
+            else:
+                delete_query = f"""
+                MATCH (n:{self.doctype} {{id: $item_id}})-[r:{relationship_type}]->(target:{target_doctype})
+                DELETE r
+                """
+            await self.session.run(delete_query, item_id=item_id)
+
+        # Re-create Link/MultiLink relationships
+        for field in self.schema["fields"]:
+            if field.get("fieldtype") not in ["Link", "MultiLink"]:
+                continue
+
+            fieldname = field.get("fieldname")
+            target_value = data.get(fieldname)
+            if not target_value:
+                continue
+
+            target_doctype = field["link_to"]
+            relationship_type = field.get("relationship_type", "RELATED_TO").upper()
+            direction = field.get("relationship_direction", "outgoing")
+
+            # Always match using 'id' as target_field
+            target_field = "id"
+            values = target_value if isinstance(target_value, list) else [target_value]
+
+            for val in values:
+                if direction == "incoming":
+                    relation_query = f"""
+                    MATCH (target:{target_doctype} {{{target_field}: $val}})
+                    MATCH (source:{self.doctype} {{id: $source_id}})
+                    MERGE (target)-[r:{relationship_type}]->(source)
+                    """
+                else:
+                    relation_query = f"""
+                    MATCH (target:{target_doctype} {{{target_field}: $val}})
+                    MATCH (source:{self.doctype} {{id: $source_id}})
+                    MERGE (source)-[r:{relationship_type}]->(target)
+                    """
+                await self.session.run(relation_query, val=val, source_id=item_id)
+
+        return {"n": node, "id": item_id}
