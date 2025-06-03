@@ -127,7 +127,7 @@ class GenericCRUD:
                 type: type(r2),
                 node: target
             }}) AS relationships
-        ORDER BY n.created_at ASC
+        ORDER BY n.created_at DESC
         SKIP $skip
         LIMIT $limit
         """
