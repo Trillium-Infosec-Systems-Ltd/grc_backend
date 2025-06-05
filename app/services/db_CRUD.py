@@ -22,7 +22,6 @@ class GenericCRUD:
             f["fieldname"] for f in self.schema["fields"]
             if f.get("required")
         ]
-
         for field in required_fields:
             if field not in data:
                 raise ValueError(f"Missing required field: {field}")
@@ -66,11 +65,10 @@ class GenericCRUD:
             target_doctype = field["link_to"]
             relationship_type = field.get("relationship_type", "RELATED_TO").upper()
             direction = field.get("relationship_direction", "outgoing")
-
-            # Always match using 'id' field
             target_field = "id"
 
-            values = target_value if isinstance(target_value, list) else [target_value]
+            # 🧹 Deduplicate list values
+            values = list(set(target_value if isinstance(target_value, list) else [target_value]))
 
             for val in values:
                 if direction == "incoming":
@@ -88,7 +86,6 @@ class GenericCRUD:
                 await self.session.run(relation_query, val=val, source_id=data["id"])
 
         return {"n": node, "id": data["id"]}
-        
     async def get_all(self, skip: int = 0, limit: int = 10, filters: dict = None):
         filters = filters or {}
         where_clauses = []
@@ -127,7 +124,7 @@ class GenericCRUD:
                 type: type(r2),
                 node: target
             }}) AS relationships
-        ORDER BY n.created_at DESC
+        ORDER BY n.created_at ASC
         SKIP $skip
         LIMIT $limit
         """
