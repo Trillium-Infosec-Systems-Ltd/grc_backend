@@ -43,30 +43,10 @@
       "required": true
     },
     {
-      "fieldname": "associated_assets",
-      "fieldtype": "MultiLink",
-      "label": "Associated Assets",
-      "link_to": "assets",
-       "target_field":"asset_name",
-      "relationship_type": "POSESSESSES_RISK",
-      "relation_direction": "incoming",
-      "span": 12,
-      "display_on_frontend": false,
-      "required": true
-    },
-    {
       "fieldname": "department",
       "fieldtype": "Select",
       "label": "Department",
       "options": ["Finance", "IT", "HR", "Operations", "Legal"],
-      "display_on_frontend": false,
-      "span": 12,
-      "required": true
-    },
-    {
-      "fieldname": "risk_description",
-      "fieldtype": "LongText",
-      "label": "Risk Description",
       "display_on_frontend": false,
       "span": 12,
       "required": true
@@ -82,6 +62,58 @@
       "display_on_frontend": true,
       "span": 12,
       "required": true
+    },
+    {
+      "fieldname": "associated_assets",
+      "fieldtype": "MultiLink",
+      "label": "Associated Assets",
+      "link_to": "assets",
+       "target_field":"asset_name",
+      "relationship_type": "POSESSESSES_RISK",
+      "relation_direction": "incoming",
+      "span": 12,
+      "display_on_frontend": false,
+      "required": true
+    },
+    {
+      "fieldname": "type",
+      "fieldtype": "Select",
+      "label": "Asset Category",
+      "options": ["Database", "Server", "Web Application", "Endpoint Security"],
+      "required": true,
+      "span": 12,
+      "default_label": false,
+      "display_on_frontend": true
+    },
+    {
+      "fieldname": "associated_threats",
+      "fieldtype": "MultiLink",
+      "label": "Associated Threats",
+      "link_to": "threat",
+       "target_field":"threat_name",
+      "relationship_type": "POSESSESSES_RISK",
+      "relation_direction": "incoming",
+      "span": 12,
+      "display_on_frontend": false,
+      "required": true
+    },
+    {
+      "fieldname": "threat_probability",
+      "fieldtype": "Select",
+      "label": "Threat Probability",
+      "options": ["Low", "Medium", "High"],
+      "display_on_frontend": true,
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "ease_of_exploitation",
+      "fieldtype": "Select",
+      "label": "Ease of Exploitation",
+      "options": ["Low", "Medium", "High"],
+      "display_on_frontend": true,
+      "span": 12,
+      "required": false
     },
     {
       "fieldname": "date_identified",
@@ -105,6 +137,14 @@
       "label": "Risk Decision",
       "options": ["Accept", "Mitigate", "Transfer", "Avoid"],
       "display_on_frontend": true,
+      "span": 12,
+      "required": true
+    },
+    {
+      "fieldname": "risk_description",
+      "fieldtype": "LongText",
+      "label": "Risk Description",
+      "display_on_frontend": false,
       "span": 12,
       "required": true
     },

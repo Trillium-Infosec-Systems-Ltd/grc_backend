@@ -15,7 +15,7 @@
       "fieldname": "control_id",
       "fieldtype": "Data",
       "label": "Control ID (e.g., PR.AC-1)",
-      "display_on_frontend": false,
+      "display_on_frontend": true,
       "span": 12,
       "required": true
     },
@@ -125,7 +125,7 @@
       "fieldtype": "LongText",
       "label": "Description",
       "span": 12,
-      "display_on_frontend": true
+      "display_on_frontend": false
     },
     {
       "fieldname": "attached_files",
@@ -133,6 +133,17 @@
       "label": "Attached Evidence / Files",
       "span": 12,
       "display_on_frontend": false
+    },
+     {
+      "fieldname": "rating",
+      "fieldtype": "Select",
+      "label": "Control Rating",
+      "options": ["Low", "Medium", "High", "Critical"],
+      "required": true,
+      "default_label": false,
+      "span": 12,
+      "display_on_frontend": true,
+      "default": "Medium"
     },
     {
       "fieldname": "applicable_asset_category",
@@ -144,8 +155,15 @@
         "Servers & Databases",
         "Cloud Infrastructure"
       ],
-      "display_on_frontend": false,
+      "display_on_frontend": true,
       "span": 12
+    },
+    {
+      "fieldname": "remarks",
+      "fieldtype": "LongText",
+      "label": "Remarks",
+      "span": 12,
+      "display_on_frontend": false
     },
     {
       "fieldname": "control_assessment",

@@ -44,7 +44,7 @@
       "required": true,
       "default_label": false,
       "span": 12,
-      "display_on_frontend": true,
+      "display_on_frontend": false,
       "default": "Staging"
     },
     {
@@ -55,7 +55,7 @@
       "required": true,
       "default_label": false,
       "span": 12,
-      "display_on_frontend": true,
+      "display_on_frontend": false,
       "defaultValue": "Internal"
     },
     {
@@ -63,7 +63,7 @@
       "fieldtype": "Select",
       "label": "Department",
       "options": ["Finance", "IT", "HR", "Operations", "Legal", "SOC Team"],
-      "display_on_frontend": true,
+      "display_on_frontend": false,
       "span": 12,
       "required": true
     },
@@ -71,7 +71,7 @@
       "fieldname": "ip_hostname",
       "fieldtype": "Data",
       "label": "IP/Hostname",
-      "display_on_frontend": true,
+      "display_on_frontend": false,
       "required": false,
       "span": 12,
       "default_label": false,
@@ -97,7 +97,7 @@
       "fieldtype": "Radio",
       "label": "Contains Sensitive Data",
       "options":[ "Yes", "No" ],
-      "display_on_frontend": true,
+      "display_on_frontend": false,
       "required": true,
       "span": 12,
       "default": "Yes"
@@ -134,7 +134,7 @@
       "fieldtype": "Text",
       "label": "Notes",
       "content": "",
-      "display_on_frontend": true,
+      "display_on_frontend": false,
       "required": false,
       "span": 12
     },
@@ -148,7 +148,7 @@
       "relationship_type": "HAS_CONTROL",
       "relation_direction": "outgoing",
 
-      "display_on_frontend": true,
+      "display_on_frontend": false,
       "required": false,
       "span": 12
     },
@@ -169,7 +169,7 @@
       "label": "Updated at",
       "span": 12,
       "default_label": false,
-      "display_on_frontend": false,
+      "display_on_frontend": true,
       "required": false,
       "hidden": true
     },

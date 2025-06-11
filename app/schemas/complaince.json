@@ -24,7 +24,7 @@
         "label": "Framework",
         "options": ["NIST CSF", "ISO 27001", "PCI DSS", "HIPAA"],
         "default": "NIST CSF",
-        "display_on_frontend": true,
+        "display_on_frontend": false,
         "required": true,
         "span": 12
       },
@@ -32,7 +32,7 @@
         "fieldname": "description",
         "fieldtype": "LongText",
         "label": "Description",
-        "display_on_frontend": true,
+        "display_on_frontend": false,
         "required": true,
         "span": 12
       },
@@ -40,7 +40,7 @@
         "fieldname": "responsibility",
         "fieldtype": "Data",
         "label": "Responsibility",
-        "display_on_frontend": true,
+        "display_on_frontend": false,
         "required": true,
         "span": 12
       },
@@ -48,7 +48,7 @@
         "fieldname": "last_updated",
         "fieldtype": "Date",
         "label": "Last Updated",
-        "display_on_frontend": true,
+        "display_on_frontend": false,
         "required": true,
         "span": 12
       },
@@ -56,7 +56,7 @@
         "fieldname": "next_review_date",
         "fieldtype": "Date",
         "label": "Next Review Date",
-        "display_on_frontend": true,
+        "display_on_frontend": false,
         "required": true,
         "span": 12
       },
@@ -64,7 +64,7 @@
         "fieldname": "audit_requirements",
         "fieldtype": "LongText",
         "label": "Clause Audit Requirements",
-        "display_on_frontend": true,
+        "display_on_frontend": false,
         "span": 12
       },
       {
@@ -74,14 +74,14 @@
         "link_to": "Policy",
         "relationship_type": "SUPPORTS",
         "relation_direction": "incoming",
-        "display_on_frontend": true,
+        "display_on_frontend": false,
         "span": 12
       },
       {
         "fieldname": "attached_files",
         "fieldtype": "File",
         "label": "Attached Evidence / Files",
-        "display_on_frontend": true,
+        "display_on_frontend": false,
         "span": 12
       },
       {
@@ -89,7 +89,7 @@
         "fieldtype": "MultiSelect",
         "label": "Tools in Use",
         "options": ["Okta", "Microsoft Azure AD", "Google Workspace Admin Console", "Other"],
-        "display_on_frontend": true,
+        "display_on_frontend": false,
         "span": 12
       },
       {
@@ -106,7 +106,7 @@
         "fieldtype": "Table",
         "label": "Compliance Requirements",
         "child_doctype": "Compliance Question",
-        "display_on_frontend": true,
+        "display_on_frontend": false,
         "span": 12
       },
       {
