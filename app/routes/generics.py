@@ -96,7 +96,8 @@ async def get_form_metadata(doctype: str):
             columns.append({
                 "title": field.get("label", field["fieldname"]),
                 "dataIndex": field["fieldname"],
-                "key": field["fieldname"]
+                "key": field["fieldname"],
+                "fieldType": field["fieldtype"]
             })
 
     return {
