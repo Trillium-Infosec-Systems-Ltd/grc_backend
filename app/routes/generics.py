@@ -93,12 +93,23 @@ async def get_form_metadata(doctype: str):
     # First: fields from schema
     for field in schema.get("fields", []):
         if field.get("display_on_frontend", False):
-            columns.append({
-                "title": field.get("label", field["fieldname"]),
-                "dataIndex": field["fieldname"],
-                "key": field["fieldname"],
-                "fieldType": field["fieldtype"]
-            })
+            column = {
+            "title": field.get("label", field["fieldname"]),
+            "dataIndex": field["fieldname"],
+            "key": field["fieldname"],
+            "fieldType": field["fieldtype"]
+            }
+            if "is_colorful" in field:
+                column["isColorful"] = field["is_colorful"]
+
+            columns.append(column)
+            # columns.append({
+            #     "title": field.get("label", field["fieldname"]),
+            #     "dataIndex": field["fieldname"],
+            #     "key": field["fieldname"],
+            #     "fieldType": field["fieldtype"],
+            #     "isColorful": field["is_colorful"]
+            # })
 
     return {
         "form_id": doctype,

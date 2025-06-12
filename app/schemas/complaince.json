@@ -99,6 +99,7 @@
         "options": ["Compliant", "Partially Compliant", "Non-Compliant"],
         "default": "Compliant",
         "display_on_frontend": true,
+        "is_colorful": true,
         "span": 12
       },
       {

@@ -34,6 +34,7 @@
       "default_label": false,
       "span": 12,
       "display_on_frontend": true,
+      "is_colorful": true,
       "default": "Medium"
     },
     {
