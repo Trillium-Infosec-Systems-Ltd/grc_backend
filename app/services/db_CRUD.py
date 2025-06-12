@@ -43,7 +43,7 @@ class GenericCRUD:
         data["created_at"] = now
         data["updated_at"] = now
 
-        # Create node and return it
+        # Create the main node
         query = f"""
         CREATE (n:{self.doctype} $data)
         RETURN n
@@ -52,9 +52,12 @@ class GenericCRUD:
         record = await result.single()
         node = record["n"]
 
-        # Create Link and MultiLink relationships
+        # RELATIONSHIP CREATION WITH DUPLICATE PREVENTION
+        created_relationships = set()
+# SIMPLIFIED RELATIONSHIP CREATION
         for field in self.schema["fields"]:
-            if field.get("fieldtype") not in ["Link", "MultiLink"]:
+            fieldtype = field.get("fieldtype")
+            if fieldtype not in ["Link", "MultiLink"]:
                 continue
 
             fieldname = field.get("fieldname")
@@ -65,27 +68,38 @@ class GenericCRUD:
             target_doctype = field["link_to"]
             relationship_type = field.get("relationship_type", "RELATED_TO").upper()
             direction = field.get("relationship_direction", "outgoing")
-            target_field = "id"
 
-            # 🧹 Deduplicate list values
-            values = list(set(target_value if isinstance(target_value, list) else [target_value]))
+            # For MultiLink, ensure list and remove duplicates
+            if fieldtype == "MultiLink":
+                values = list(set(target_value)) if isinstance(target_value, list) else [target_value]
+            else:
+                values = [target_value]
 
             for val in values:
                 if direction == "incoming":
                     relation_query = f"""
-                    MATCH (target:{target_doctype} {{{target_field}: $val}})
+                    MATCH (target:{target_doctype} {{id: $val}})
                     MATCH (source:{self.doctype} {{id: $source_id}})
                     MERGE (target)-[r:{relationship_type}]->(source)
+                    RETURN r
                     """
                 else:
                     relation_query = f"""
-                    MATCH (target:{target_doctype} {{{target_field}: $val}})
+                    MATCH (target:{target_doctype} {{id: $val}})
                     MATCH (source:{self.doctype} {{id: $source_id}})
                     MERGE (source)-[r:{relationship_type}]->(target)
+                    RETURN r
                     """
-                await self.session.run(relation_query, val=val, source_id=data["id"])
+
+                result = await self.session.run(
+                    relation_query,
+                    val=val,
+                    source_id=data["id"]
+                )
+                await result.consume()
 
         return {"n": node, "id": data["id"]}
+
     async def get_all(self, skip: int = 0, limit: int = 10, filters: dict = None):
         filters = filters or {}
         where_clauses = []
