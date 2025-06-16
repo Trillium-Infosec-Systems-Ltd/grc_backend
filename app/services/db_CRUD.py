@@ -16,6 +16,7 @@ class GenericCRUD:
         self.schema = load_schema(doctype)
         self.doctype = doctype 
  
+
     async def create(self, data: dict):
         # Validate required fields
         required_fields = [
@@ -26,7 +27,7 @@ class GenericCRUD:
             if field not in data:
                 raise ValueError(f"Missing required field: {field}")
 
-        # Generate new ID
+        # Generate new Control ID
         id_query = """
         MERGE (c:Counter {doctype: $doctype})
         ON CREATE SET c.current = 1
@@ -36,25 +37,29 @@ class GenericCRUD:
         result = await self.session.run(id_query, doctype=self.doctype)
         record = await result.single()
         new_id = record["new_id"]
-        data["id"] = f"{self.doctype}-{new_id}"
+        data["id"] = f"{self.doctype.lower()}-{new_id}"
 
         # Add timestamps
         now = datetime.utcnow().isoformat()
         data["created_at"] = now
         data["updated_at"] = now
 
-        # Create the main node
-        query = f"""
+        # Extract and temporarily remove control_assessment from main payload
+        assessment_items = data.pop("control_assessment", [])
+
+        # Create the Control node
+        create_query = f"""
         CREATE (n:{self.doctype} $data)
         RETURN n
         """
-        result = await self.session.run(query, data=data)
+        result = await self.session.run(create_query, data=data)
         record = await result.single()
         node = record["n"]
 
-        # RELATIONSHIP CREATION WITH DUPLICATE PREVENTION
-        created_relationships = set()
-# SIMPLIFIED RELATIONSHIP CREATION
+        # Store relationship info for response
+        relationship_data = []
+
+        # Handle Link / MultiLink relationships
         for field in self.schema["fields"]:
             fieldtype = field.get("fieldtype")
             if fieldtype not in ["Link", "MultiLink"]:
@@ -68,12 +73,7 @@ class GenericCRUD:
             target_doctype = field["link_to"]
             relationship_type = field.get("relationship_type", "RELATED_TO").upper()
             direction = field.get("relationship_direction", "outgoing")
-
-            # For MultiLink, ensure list and remove duplicates
-            if fieldtype == "MultiLink":
-                values = list(set(target_value)) if isinstance(target_value, list) else [target_value]
-            else:
-                values = [target_value]
+            values = list(set(target_value)) if fieldtype == "MultiLink" else [target_value]
 
             for val in values:
                 if direction == "incoming":
@@ -81,24 +81,88 @@ class GenericCRUD:
                     MATCH (target:{target_doctype} {{id: $val}})
                     MATCH (source:{self.doctype} {{id: $source_id}})
                     MERGE (target)-[r:{relationship_type}]->(source)
-                    RETURN r
+                    RETURN r, target
                     """
                 else:
                     relation_query = f"""
                     MATCH (target:{target_doctype} {{id: $val}})
                     MATCH (source:{self.doctype} {{id: $source_id}})
                     MERGE (source)-[r:{relationship_type}]->(target)
-                    RETURN r
+                    RETURN r, target
                     """
-
-                result = await self.session.run(
+                rel_result = await self.session.run(
                     relation_query,
                     val=val,
                     source_id=data["id"]
                 )
-                await result.consume()
+                rel_record = await rel_result.single()
+                relationship_data.append({
+                    "node": rel_record["target"] if rel_record else None,
+                    "type": relationship_type,
+                    "direction": direction
+                })
 
-        return {"n": node, "id": data["id"]}
+        # Handle ControlAssessment nodes and MAPS_TO links
+        created_assessments = []
+        for index, item in enumerate(assessment_items):
+            question_id = item.get("question_id")
+            status = item.get("status", False)
+            if not question_id:
+                continue
+
+            assessment_id = f"{data['id']}-Q{index + 1}"
+
+            # Create ControlAssessment node and link to Control
+            assessment_query = """
+            CREATE (a:ControlAssessment {
+                id: $id,
+                status: $status,
+                created_at: $created_at,
+                updated_at: $updated_at
+            })
+            WITH a
+            MATCH (c:Control {id: $control_id})
+            MERGE (c)-[:HAS_ASSESSMENT]->(a)
+            RETURN a
+            """
+            assessment_result = await self.session.run(
+                assessment_query,
+                id=assessment_id,
+                status=status,
+                created_at=now,
+                updated_at=now,
+                control_id=data["id"]
+            )
+            a_record = await assessment_result.single()
+
+            if not a_record:
+                raise Exception(f"Failed to create ControlAssessment or link it to Control {data['id']}")
+
+            a_node = a_record["a"]
+            created_assessments.append({"assessment": a_node})
+
+            # Link assessment to question
+            map_query = """
+            MATCH (a:ControlAssessment {id: $assessment_id})
+            MATCH (q:control_question {id: $question_id})
+            MERGE (a)-[:MAPS_TO]->(q)
+            RETURN q
+            """
+            map_result = await self.session.run(
+                map_query,
+                assessment_id=assessment_id,
+                question_id=question_id
+            )
+            q_record = await map_result.single()
+            if q_record:
+                created_assessments[-1]["question"] = q_record["q"]
+
+        return {
+            "node": node,
+            "id": data["id"],
+            "relationships": relationship_data,
+            "assessments": created_assessments
+        }
 
     async def get_all(self, skip: int = 0, limit: int = 10, filters: dict = None):
         filters = filters or {}
