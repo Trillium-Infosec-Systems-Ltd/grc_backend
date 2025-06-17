@@ -167,26 +167,11 @@
     },
     {
       "fieldname": "control_assessment",
-      "fieldtype": "Table",
+      "fieldtype": "question_table",
       "label": "Control Assessment",
       "span": 12,
       "display_on_frontend": false,
-      "fields": [
-        {
-          "fieldname": "question",
-          "fieldtype": "Data",
-          "label": "Control Question",
-          "required": true,
-          "span": 10
-        },
-        {
-          "fieldname": "status",
-          "fieldtype": "Check",
-          "label": "Yes / No",
-          "required": false,
-          "span": 2
-        }
-      ]
+      "question":[]
     }
   ]
 }

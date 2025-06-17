@@ -10,6 +10,28 @@
         "required": true
       },
       {
+        "fieldname": "control",
+        "fieldtype": "Link",
+        "label": "Control",
+        "target_field":"control_name",
+        "relationship_direction":"incoming",
+        "display_on_frontend": true,
+        "span": 24,
+        "required": true
+      },
+      {
+        "fieldname": "score",
+        "fieldtype": "Float",
+        "label": "Score",
+        "display_on_frontend": true,
+        "span": 12,
+        "required": false,
+        "min": "0",
+        "max": "2",
+        "default": 1
+      },
+ 
+      {
         "fieldname": "created_at",
         "fieldtype": "Datetime",
         "label": "Created at",
