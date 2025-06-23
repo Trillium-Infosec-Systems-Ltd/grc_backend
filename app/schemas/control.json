@@ -169,9 +169,9 @@
       "fieldname": "control_assessment",
       "fieldtype": "question_table",
       "label": "Control Assessment",
-      "span": 12,
-      "display_on_frontend": false,
-      "question":[]
+      "span": 24,
+      "display_on_frontend": false
+
     }
   ]
 }

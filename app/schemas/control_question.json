@@ -1,56 +1,50 @@
 {
-    "doctype": "control_question",
-    "fields": [
-      {
-        "fieldname": "question",
-        "fieldtype": "Data",
-        "label": "Control Question",
-        "display_on_frontend": true,
-        "span": 24,
-        "required": true
-      },
-      {
-        "fieldname": "control",
-        "fieldtype": "Link",
-        "label": "Control",
-        "target_field":"control_name",
-        "relationship_direction":"incoming",
-        "display_on_frontend": true,
-        "span": 24,
-        "required": true
-      },
-      {
-        "fieldname": "score",
-        "fieldtype": "Float",
-        "label": "Score",
-        "display_on_frontend": true,
-        "span": 12,
-        "required": false,
-        "min": "0",
-        "max": "2",
-        "default": 1
-      },
- 
-      {
-        "fieldname": "created_at",
-        "fieldtype": "Datetime",
-        "label": "Created at",
-        "span": 12,
-        "default_label": false,
-        "display_on_frontend": false,
-        "required": false,
-        "hidden": true
-      },
-      {
-        "fieldname": "updated_at",
-        "fieldtype": "Datetime",
-        "label": "Updated at",
-        "span": 12,
-        "default_label": false,
-        "display_on_frontend": false,
-        "required": false,
-        "hidden": true
-      }
-    
-    ]
+  "doctype": "control_question",
+  "fields": [
+    {
+      "fieldname": "question",
+      "fieldtype": "Data",
+      "label": "Control Question",
+      "display_on_frontend": true,
+      "span": 24,
+      "required": true
+    },
+    {
+      "fieldname": "control_id",
+      "fieldtype": "Data",
+      "label": "Control ID",
+      "display_on_frontend": false,
+      "span": 24,
+      "required": true
+    },
+    {
+      "fieldname": "weightage",
+      "fieldtype": "Float",
+      "label": "Weightage",
+      "display_on_frontend": true,
+      "span": 12,
+      "required": false,
+      "min": "0",
+      "max": "2",
+      "default": 1
+    },
+    {
+      "fieldname": "created_at",
+      "fieldtype": "Datetime",
+      "label": "Created at",
+      "span": 12,
+      "display_on_frontend": false,
+      "required": false,
+      "hidden": true
+    },
+    {
+      "fieldname": "updated_at",
+      "fieldtype": "Datetime",
+      "label": "Updated at",
+      "span": 12,
+      "display_on_frontend": false,
+      "required": false,
+      "hidden": true
+    }
+  ]
 }
