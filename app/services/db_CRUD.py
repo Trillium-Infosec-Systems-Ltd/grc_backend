@@ -69,6 +69,14 @@ class GenericCRUD:
                 record = await result.single()
                 node = record["n"]
 
+                # Create relationship from control -> control_question
+                relation_query = f"""
+                MATCH (target:control {{id: $control_id}})
+                MATCH (source:{self.doctype} {{id: $question_id}})
+                MERGE (target)-[:HAS_QUESTION]->(source)
+                """
+                await self.session.run(relation_query, control_id=control, question_id=node_id)
+
                 created_questions.append({"node": node, "id": node_id})
 
             return {"n": created_questions}  # ✅ Return consistent "n" key
