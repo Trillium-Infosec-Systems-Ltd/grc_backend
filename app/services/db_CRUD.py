@@ -284,7 +284,7 @@ class GenericCRUD:
 
         # ✅ Special handling for control_question
         if self.doctype == "control_question" and isinstance(data.get("question"), list):
-            control_id = data.get("control")
+            control_id = data.get("control_id")
             question_list = data.get("question", [])
 
             if not control_id or not question_list:
