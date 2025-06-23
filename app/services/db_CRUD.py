@@ -278,13 +278,56 @@ class GenericCRUD:
         deleted = await result.single()
         return deleted["deleted_count"]
     
-
     async def update(self, item_id: str, data: dict):
-        # Add updated timestamp
         now = datetime.utcnow().isoformat()
         data["updated_at"] = now
 
-        # Update node properties
+        # ✅ Special handling for control_question
+        if self.doctype == "control_question" and isinstance(data.get("question"), list):
+            control_id = data.get("control")
+            question_list = data.get("question", [])
+
+            if not control_id or not question_list:
+                raise ValueError("Missing 'control' or 'question' list in update")
+
+            # Transform into flat structure for storage
+            update_data = {
+                "control_id": control_id,
+                "questions_text": [q["question"] for q in question_list],
+                "weights": [q.get("wheightage", 1) for q in question_list],
+                "updated_at": now
+            }
+
+            # Update the node
+            query = f"""
+            MATCH (n:{self.doctype} {{id: $item_id}})
+            SET n += $data
+            RETURN n
+            """
+            result = await self.session.run(query, item_id=item_id, data=update_data)
+            record = await result.single()
+            if not record:
+                return None
+            node = record["n"]
+
+            # Delete existing HAS_QUESTION relationships
+            delete_rel_query = f"""
+            MATCH (n:{self.doctype} {{id: $item_id}})<-[r:HAS_QUESTION]-(:control)
+            DELETE r
+            """
+            await self.session.run(delete_rel_query, item_id=item_id)
+
+            # Create updated relationship to control
+            relation_query = f"""
+            MATCH (target:control {{control_id: $control_id}})
+            MATCH (source:{self.doctype} {{id: $item_id}})
+            MERGE (target)-[:HAS_QUESTION]->(source)
+            """
+            await self.session.run(relation_query, control_id=control_id, item_id=item_id)
+
+            return {"n": node, "id": item_id}
+
+        # ✅ Generic update logic for all other doctypes
         query = f"""
         MATCH (n:{self.doctype} {{id: $item_id}})
         SET n += $data
@@ -297,14 +340,14 @@ class GenericCRUD:
 
         node = record["n"]
 
-        # Remove existing Link/MultiLink relationships only for fields being updated
+        # Delete old relationships for fields being updated
         for field in self.schema["fields"]:
             if field.get("fieldtype") not in ["Link", "MultiLink"]:
                 continue
 
             fieldname = field.get("fieldname")
             if fieldname not in data:
-                continue  # Only update if field is provided in the update request
+                continue
 
             target_doctype = field["link_to"]
             relationship_type = field.get("relationship_type", "RELATED_TO").upper()
@@ -322,7 +365,7 @@ class GenericCRUD:
                 """
             await self.session.run(delete_query, item_id=item_id)
 
-        # Re-create Link/MultiLink relationships
+        # Recreate updated relationships
         for field in self.schema["fields"]:
             if field.get("fieldtype") not in ["Link", "MultiLink"]:
                 continue
@@ -335,8 +378,6 @@ class GenericCRUD:
             target_doctype = field["link_to"]
             relationship_type = field.get("relationship_type", "RELATED_TO").upper()
             direction = field.get("relationship_direction", "outgoing")
-
-            # Always match using 'id' as target_field
             target_field = "id"
             values = target_value if isinstance(target_value, list) else [target_value]
 
