@@ -29,6 +29,8 @@ async def create_item(
         result = await crud.create(data)
         if not result:
             raise HTTPException(status_code=500, detail="Failed to create item")
+        if doctype == "control_question":
+            return result
         return result["n"]
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))

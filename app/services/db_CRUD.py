@@ -25,62 +25,59 @@ class GenericCRUD:
             if not control or not question_list:
                 raise ValueError("Missing 'control' or 'question' list in request")
 
-            created_questions = []
+            # Generate ID
+            id_query = """
+            MERGE (c:Counter {doctype: $doctype})
+            ON CREATE SET c.current = 1
+            ON MATCH SET c.current = c.current + 1
+            RETURN c.current AS new_id
+            """
+            result = await self.session.run(id_query, doctype=self.doctype)
+            record = await result.single()
+            new_id = record["new_id"]
+            node_id = f"{self.doctype.lower()}-{new_id}"
 
-            for q in question_list:
-                question_text = q.get("question")
-                weightage = q.get("wheightage", 1)
+            now = datetime.utcnow().isoformat()
 
-                # Validate required 'question' field
-                for field in self.schema["fields"]:
-                    if field.get("required") and field["fieldname"] == "question" and not question_text:
-                        raise ValueError("Missing required field: question")
+            # ✅ Define node_data here before using it
+            node_data = {
+                "id": node_id,
+                "control_id": control,
+                "questions_text": [q["question"] for q in question_list],
+                "weights": [q.get("wheightage", 1) for q in question_list],
+                "created_at": now,
+                "updated_at": now
+            }
 
-                # Generate ID
-                id_query = """
-                MERGE (c:Counter {doctype: $doctype})
-                ON CREATE SET c.current = 1
-                ON MATCH SET c.current = c.current + 1
-                RETURN c.current AS new_id
-                """
-                result = await self.session.run(id_query, doctype=self.doctype)
-                record = await result.single()
-                new_id = record["new_id"]
-                node_id = f"{self.doctype.lower()}-{new_id}"
+            # ✅ Unpack manually in query
+            create_query = f"""
+            CREATE (n:{self.doctype} {{
+                id: $id,
+                control_id: $control_id,
+                questions_text: $questions_text,
+                weights: $weights,
+                created_at: $created_at,
+                updated_at: $updated_at
+            }})
+            RETURN n
+            """
+            result = await self.session.run(create_query, **node_data)
+            record = await result.single()
+            node = record["n"]
 
-                # Timestamps
-                now = datetime.utcnow().isoformat()
+            # Create relationship
+            relation_query = f"""
+            MATCH (target:control {{control_id: $control_id}})
+            MATCH (source:{self.doctype} {{id: $question_id}})
+            MERGE (target)-[:HAS_QUESTION]->(source)
+            """
+            await self.session.run(relation_query, control_id=control, question_id=node_id)
 
-                node_data = {
-                    "id": node_id,
-                    "question": question_text,
-                    "weightage": weightage,
-                    "control": control,
-                    "created_at": now,
-                    "updated_at": now
-                }
-
-                # Create node
-                create_query = f"""
-                CREATE (n:{self.doctype} $data)
-                RETURN n
-                """
-                result = await self.session.run(create_query, data=node_data)
-                record = await result.single()
-                node = record["n"]
-
-                # Create relationship from control -> control_question
-                relation_query = f"""
-                MATCH (target:control {{id: $control_id}})
-                MATCH (source:{self.doctype} {{id: $question_id}})
-                MERGE (target)-[:HAS_QUESTION]->(source)
-                """
-                await self.session.run(relation_query, control_id=control, question_id=node_id)
-
-                created_questions.append({"node": node, "id": node_id})
-
-            return {"n": created_questions}  # ✅ Return consistent "n" key
-
+            return {
+                "control": control,
+                "questions": question_list,
+                "id": node_id
+            }
         # ---- Generic Flow (for all other doctypes) ----
         # Validate required fields
         required_fields = [
