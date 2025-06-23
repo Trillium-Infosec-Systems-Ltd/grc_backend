@@ -2,7 +2,7 @@
   "doctype": "control_question",
   "fields": [
     {
-      "fieldname": "control",
+      "fieldname": "control_id",
       "fieldtype": "Link",
       "label": "Control",
       "link_to": "control",
