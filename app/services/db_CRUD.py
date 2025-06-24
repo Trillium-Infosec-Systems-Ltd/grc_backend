@@ -19,10 +19,11 @@ class GenericCRUD:
     async def create(self, data: dict):
         # Special case for 'control_question' with multiple questions
         if self.doctype == "control_question" and isinstance(data.get("question"), list):
-            control = data.get("control")
+            control_id = data.get("control_id")
+            control = data.get("control_id")
             question_list = data.get("question", [])
 
-            if not control or not question_list:
+            if not control_id or not question_list:
                 raise ValueError("Missing 'control' or 'question' list in request")
 
             # Generate ID
@@ -42,7 +43,7 @@ class GenericCRUD:
             # ✅ Define node_data here before using it
             node_data = {
                 "id": node_id,
-                "control_id": control,
+                "control": control,
                 "questions_text": [q["question"] for q in question_list],
                 "weights": [q.get("wheightage", 1) for q in question_list],
                 "created_at": now,
@@ -53,7 +54,7 @@ class GenericCRUD:
             create_query = f"""
             CREATE (n:{self.doctype} {{
                 id: $id,
-                control_id: $control_id,
+                control: $control,
                 questions_text: $questions_text,
                 weights: $weights,
                 created_at: $created_at,
@@ -71,10 +72,10 @@ class GenericCRUD:
             MATCH (source:{self.doctype} {{id: $question_id}})
             MERGE (target)-[:HAS_QUESTION]->(source)
             """
-            await self.session.run(relation_query, control_id=control, question_id=node_id)
+            await self.session.run(relation_query, control_id=control_id, question_id=node_id)
 
             return {
-                "control": control,
+                "control_id": control_id,
                 "questions": question_list,
                 "id": node_id
             }

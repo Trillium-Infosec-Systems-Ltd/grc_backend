@@ -8,10 +8,20 @@
       "link_to": "control",
       "target_field":"control_name",
       "relationship_direction":"incoming",
-      "display_on_frontend": true,
+      "display_on_frontend": false,
       "span": 24,
       "required": true
     },
+    {
+      "fieldname": "control",
+      "fieldtype": "data",
+      "label": "Control",
+      "span": 12,
+      "display_on_frontend": true,
+      "required": false,
+      "hidden": true
+    },
+
     {
       "fieldname": "question",
       "fieldtype": "form_list_question",

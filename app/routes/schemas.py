@@ -26,6 +26,33 @@ async def get_schema(schema_name: str, doc_id: str = None, db: AsyncSession = De
     if doc_id:
         crud = GenericCRUD(db, schema_name)
         document = await crud.get_by_id(doc_id)
+        if schema_name == "control":
+
+            
+            doc_node = document.get("node", {})
+            control_id = doc_node.get("control_id", "")
+            print("+++++++++++++++++++",control_id)
+
+            # 1. Query related control_question nodes
+            query = """
+                MATCH (q:control_question)
+                WHERE q.control = $control_id
+                RETURN q
+            """
+
+            questions = []
+            result = await crud.session.run(query, control_id=control_id)
+            async for record in result:
+                q_node = record["q"]
+                q_dict = dict(q_node)
+                questions_text = q_dict.get("questions_text", [])
+
+                # 2. Format each question with default `status: False`
+                q_list = [{"question": text, "answer": False} for text in questions_text]
+                questions.extend(q_list)
+
+
+
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
 
@@ -50,6 +77,13 @@ async def get_schema(schema_name: str, doc_id: str = None, db: AsyncSession = De
         for field in schema.get("fields", []):
             field_name = field.get("fieldname")
             field["default_value"] = doc_data.get(field_name)
+            if field.get("fieldname") == "control_assessment":
+                field["default_value"] = questions
+                break
+
+
+
+
 
         # Attach relationships for frontend rendering (optional)
         schema["relationships"] = relationships
