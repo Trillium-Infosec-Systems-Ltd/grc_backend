@@ -46,9 +46,13 @@ async def get_schema(schema_name: str, doc_id: str = None, db: AsyncSession = De
                 q_node = record["q"]
                 q_dict = dict(q_node)
                 questions_text = q_dict.get("questions_text", [])
+                question_weightage = q_dict.get("weights", [])
 
-                # 2. Format each question with default `status: False`
-                q_list = [{"question": text, "answer": False} for text in questions_text]
+                q_list = [
+                    {"question": text, "answer": False, "weight": weight}
+                    for text, weight in zip(questions_text, question_weightage)
+                ]
+
                 questions.extend(q_list)
 
 

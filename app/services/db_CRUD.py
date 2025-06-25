@@ -20,7 +20,22 @@ class GenericCRUD:
         # Special case for 'control_question' with multiple questions
         if self.doctype == "control_question" and isinstance(data.get("question"), list):
             control_id = data.get("control_id")
-            control = data.get("control_id")
+            
+            query ="""
+                MATCH(c:control {id:$control_id})
+                RETURN c.control_id as control
+            """
+
+            result = await self.session.run(query, control_id=control_id)
+            record = await result.single()
+
+
+            if record:
+                control = record["control"]
+            else:
+                control = control_id
+
+            # control = data.get("control_id")
             question_list = data.get("question", [])
 
             if not control_id or not question_list:
