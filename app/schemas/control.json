@@ -128,14 +128,15 @@
     },
      {
       "fieldname": "rating",
-      "fieldtype": "Select",
+      "fieldtype": "data",
       "label": "Control Rating",
       "options": ["Low", "Medium", "High", "Critical"],
       "required": true,
       "default_label": false,
       "span": 12,
       "display_on_frontend": true,
-      "default": "Medium"
+      "default": "Medium",
+      "disable":true
     },
     {
       "fieldname": "applicable_asset_category",
@@ -155,6 +156,14 @@
       "fieldtype": "LongText",
       "label": "Remarks",
       "span": 12,
+      "display_on_frontend": false
+    },
+    {
+      "fieldname": "control_ratting%",
+      "fieldtype": "Data",
+      "label": "Control_Ratting%",
+      "span": 12,
+      "display":"hidden",
       "display_on_frontend": false
     },
     {
