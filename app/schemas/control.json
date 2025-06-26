@@ -39,15 +39,7 @@
       "display_on_frontend": false,
       "required": true
     },
-    {
-      "fieldname": "compliance_status",
-      "fieldtype": "Select",
-      "label": "Compliance Status",
-      "options": ["Non-Compliant","Partially Compliant","Compliant" ],
-      "required": true,
-      "span": 12,
-      "display_on_frontend": true
-    },
+
     {
       "fieldname": "implementation_guidelines",
       "fieldtype": "LongText",
@@ -164,6 +156,15 @@
       "label": "Remarks",
       "span": 12,
       "display_on_frontend": false
+    },
+    {
+      "fieldname": "compliance_status",
+      "fieldtype": "AssessmentProgress",
+      "label": "Compliance Status",
+      "options": ["Non-Compliant","Partially Compliant","Compliant" ],
+      "required": true,
+      "span": 24,
+      "display_on_frontend": true
     },
     {
       "fieldname": "control_assessment",
