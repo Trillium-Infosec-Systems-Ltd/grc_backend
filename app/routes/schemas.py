@@ -7,7 +7,6 @@ from neo4j import AsyncSession  # or from your actual Neo4j async client
 router = APIRouter()
 
 SCHEMA_DIR = os.path.join(os.path.dirname(__file__), "..", "schemas")
-
 @router.get("/schemas/{schema_name}/{doc_id}")
 @router.get("/schemas/{schema_name}")
 async def get_schema(schema_name: str, doc_id: str = None, db: AsyncSession = Depends(get_db)):
@@ -22,52 +21,64 @@ async def get_schema(schema_name: str, doc_id: str = None, db: AsyncSession = De
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="Invalid JSON format")
 
+    doc_data = {}
+    relationships = []
+    questions = []
+
     # If doc_id is provided, get the actual document data
     if doc_id:
         crud = GenericCRUD(db, schema_name)
         document = await crud.get_by_id(doc_id)
-        if schema_name == "control":
-
-            
-            doc_node = document.get("node", {})
-            control_id = doc_node.get("control_id", "")
-            print("+++++++++++++++++++",control_id)
-
-            # 1. Query related control_question nodes
-            query = """
-                MATCH (q:control_question)
-                WHERE q.control = $control_id
-                RETURN q
-            """
-
-            questions = []
-            result = await crud.session.run(query, control_id=control_id)
-            async for record in result:
-                q_node = record["q"]
-                q_dict = dict(q_node)
-                questions_text = q_dict.get("questions_text", [])
-                question_weightage = q_dict.get("weights", [])
-
-                q_list = [
-                    {"question": text, "answer": False, "weight": weight}
-                    for text, weight in zip(questions_text, question_weightage)
-                ]
-
-                questions.extend(q_list)
-
-
 
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
 
-        # Extract node data and relationships
         doc_node = document.get("node", {})
         relationships = document.get("relationships", [])
-
-        # ✅ Convert Neo4j Node object to Python dict
         doc_data = dict(doc_node)
 
-        # ✅ Special case: transform control_question's fields
+        # Special handling for control schema
+        if schema_name == "control":
+            control_id = doc_data.get("control_id", "")
+
+            # 1st Try: fetch from control node's saved assessment
+            query = """
+                MATCH (q:control)
+                WHERE q.id = $doc_id
+                RETURN q
+            """
+            result = await crud.session.run(query, doc_id=doc_id)
+            record = await result.single()
+
+
+            if record:
+                node = record.get("q")
+                if node and "control_assessment" in node:
+                    try:
+                        questions = json.loads(node["control_assessment"])
+                    except json.JSONDecodeError:
+                        questions = []
+            else:
+                # Fallback: derive questions from control_question nodes
+
+                query = """
+                    MATCH (q:control_question)
+                    WHERE q.control = $control_id
+                    RETURN q
+                """
+                result = await crud.session.run(query, control_id=control_id)
+                async for record in result:
+                    q_node = record["q"]
+                    q_dict = dict(q_node)
+                    questions_text = q_dict.get("questions_text", [])
+                    question_weightage = q_dict.get("weights", [])
+                    q_list = [
+                        {"question": text, "answer": False, "weight": weight}
+                        for text, weight in zip(questions_text, question_weightage)
+                    ]
+                    questions.extend(q_list)
+
+        # Special handling for control_question schema
         if schema_name == "control_question":
             questions_text = doc_data.get("questions_text", [])
             weights = doc_data.get("weights", [])
@@ -77,19 +88,14 @@ async def get_schema(schema_name: str, doc_id: str = None, db: AsyncSession = De
             ]
             doc_data["question"] = question_list
 
-        # ✅ Inject values into schema fields
-        for field in schema.get("fields", []):
-            field_name = field.get("fieldname")
-            field["default_value"] = doc_data.get(field_name)
-            if field.get("fieldname") == "control_assessment":
-                field["default_value"] = questions
-                break
+    # Inject default values into schema
+    for field in schema.get("fields", []):
+        fieldname = field.get("fieldname")
+        if fieldname == "control_assessment":
+            field["default_value"] = questions
+        else:
+            field["default_value"] = doc_data.get(fieldname)
 
-
-
-
-
-        # Attach relationships for frontend rendering (optional)
-        schema["relationships"] = relationships
+    schema["relationships"] = relationships
 
     return schema

@@ -6,7 +6,7 @@ from neo4j import AsyncDriver
 import json
 from datetime import datetime
 from typing import Any, Dict
-
+import json
 
 
 
@@ -17,6 +17,7 @@ class GenericCRUD:
         self.doctype = doctype 
     
     async def create(self, data: dict):
+
         # Special case for 'control_question' with multiple questions
         if self.doctype == "control_question" and isinstance(data.get("question"), list):
             control_id = data.get("control_id")
@@ -343,7 +344,12 @@ class GenericCRUD:
 
             return {"n": node, "id": item_id}
 
-        # ✅ Generic update logic for all other doctypes
+        # ✅ Special handling for control (control_assessment list)
+        if self.doctype == "control" and isinstance(data.get("control_assessment"), list):
+            data["control_assessment"] = json.dumps(data["control_assessment"])  # Serialize
+            data["updated_at"] = now  # Already set, but reinforces clarity
+
+        # ✅ Generic update logic for all doctypes
         query = f"""
         MATCH (n:{self.doctype} {{id: $item_id}})
         SET n += $data
@@ -356,7 +362,7 @@ class GenericCRUD:
 
         node = record["n"]
 
-        # Delete old relationships for fields being updated
+        # Delete old relationships for updated fields
         for field in self.schema["fields"]:
             if field.get("fieldtype") not in ["Link", "MultiLink"]:
                 continue
