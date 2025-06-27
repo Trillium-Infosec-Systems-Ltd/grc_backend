@@ -128,10 +128,10 @@
     },
      {
       "fieldname": "rating",
-      "fieldtype": "data",
+      "fieldtype": "Data",
       "label": "Control Rating",
       "options": ["Low", "Medium", "High", "Critical"],
-      "required": true,
+      "required": false,
       "default_label": false,
       "span": 12,
       "display_on_frontend": true,
@@ -159,11 +159,11 @@
       "display_on_frontend": false
     },
     {
-      "fieldname": "control_ratting%",
+      "fieldname": "control_ratting_percentage",
       "fieldtype": "Data",
-      "label": "Control_Ratting%",
+      "label": "Control_Ratting_percentage",
       "span": 12,
-      "display":"hidden",
+      "hidden":true,
       "display_on_frontend": false
     },
     {

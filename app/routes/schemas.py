@@ -40,8 +40,9 @@ async def get_schema(schema_name: str, doc_id: str = None, db: AsyncSession = De
         # Special handling for control schema
         if schema_name == "control":
             control_id = doc_data.get("control_id", "")
+            questions = []
 
-            # 1st Try: fetch from control node's saved assessment
+            # First try: fetch from control node's saved assessment
             query = """
                 MATCH (q:control)
                 WHERE q.id = $doc_id
@@ -50,17 +51,26 @@ async def get_schema(schema_name: str, doc_id: str = None, db: AsyncSession = De
             result = await crud.session.run(query, doc_id=doc_id)
             record = await result.single()
 
+            use_fallback = True  # Flag to determine if we need fallback
 
             if record:
                 node = record.get("q")
-                if node and "control_assessment" in node:
-                    try:
-                        questions = json.loads(node["control_assessment"])
-                    except json.JSONDecodeError:
-                        questions = []
-            else:
-                # Fallback: derive questions from control_question nodes
+                if node:
+                    raw_assessment = node.get("control_assessment")
+                    if raw_assessment:
+                        try:
+                            questions = json.loads(raw_assessment)
+                            if isinstance(questions, list) and questions:
+                                use_fallback = False
+                            else:
+                                print("control_assessment is not a non-empty list")
+                                questions = []
+                        except json.JSONDecodeError:
+                            print("Invalid JSON in control_assessment")
+                            questions = []
 
+            # Fallback: derive questions from control_question nodes
+            if use_fallback:
                 query = """
                     MATCH (q:control_question)
                     WHERE q.control = $control_id
