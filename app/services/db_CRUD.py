@@ -84,7 +84,7 @@ class GenericCRUD:
 
             # Create relationship
             relation_query = f"""
-            MATCH (target:control {{control_id: $control_id}})
+            MATCH (target:control {{id: $control_id}})
             MATCH (source:{self.doctype} {{id: $question_id}})
             MERGE (target)-[:HAS_QUESTION]->(source)
             """

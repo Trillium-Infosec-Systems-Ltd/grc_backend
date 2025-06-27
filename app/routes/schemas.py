@@ -52,7 +52,6 @@ async def get_schema(schema_name: str, doc_id: str = None, db: AsyncSession = De
             record = await result.single()
 
             use_fallback = True  # Flag to determine if we need fallback
-
             if record:
                 node = record.get("q")
                 if node:
@@ -68,7 +67,6 @@ async def get_schema(schema_name: str, doc_id: str = None, db: AsyncSession = De
                         except json.JSONDecodeError:
                             print("Invalid JSON in control_assessment")
                             questions = []
-
             # Fallback: derive questions from control_question nodes
             if use_fallback:
                 query = """
@@ -92,11 +90,13 @@ async def get_schema(schema_name: str, doc_id: str = None, db: AsyncSession = De
         if schema_name == "control_question":
             questions_text = doc_data.get("questions_text", [])
             weights = doc_data.get("weights", [])
+
             question_list = [
                 {"question": q, "wheightage": weights[i] if i < len(weights) else 0}
                 for i, q in enumerate(questions_text)
             ]
             doc_data["question"] = question_list
+
 
     # Inject default values into schema
     for field in schema.get("fields", []):
@@ -105,6 +105,7 @@ async def get_schema(schema_name: str, doc_id: str = None, db: AsyncSession = De
             field["default_value"] = questions
         else:
             field["default_value"] = doc_data.get(fieldname)
+
 
     schema["relationships"] = relationships
 

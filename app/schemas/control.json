@@ -136,7 +136,7 @@
       "span": 12,
       "display_on_frontend": true,
       "default": "Medium",
-      "disable":true
+      "disabled":true
     },
     {
       "fieldname": "applicable_asset_category",
