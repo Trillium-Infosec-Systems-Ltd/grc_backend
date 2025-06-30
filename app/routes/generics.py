@@ -244,3 +244,51 @@ async def get_asset_summary(
         "asset_type": record["asset_type"],
         "criticality_level": record["criticality_level"]
     }
+
+@router.get("/threat_info/{threat_id}")
+async def get_threat_info(threat_id: str, db: AsyncSession = Depends(get_db)):
+    crud = GenericCRUD(db, "threat")
+    data = await crud.get_by_id(threat_id)
+
+    if not data:
+        raise HTTPException(status_code=404, detail="Threat not found")
+
+    node = data.get("node", {})
+    relationships = data.get("relationships", [])
+    # print('+++++',relationships)
+
+    threat_name = node.get("threat_name")
+    likelihood = node.get("likelihood")
+
+    vulnerabilities = None
+    control_name = None
+    control_rating = None
+
+    for rel in relationships:
+        
+        
+        if rel["type"] == "CAUSES_THREAT":
+            vuln = rel["node"]
+             
+            vulnerabilities = vuln.get("name")
+        elif rel["type"] == "MITIGATES":
+            print('++++++++++'+ 'i am in the control relationship')
+            ctrl = rel["node"]
+            control_name = ctrl.get("control_id")
+            print(control_name)
+            control_rating = ctrl.get("rating")
+
+    ease_map = {
+        "High": "Low",
+        "Medium": "Medium",
+        "Low": "High"
+    }
+    ease_of_exploitation = ease_map.get(str(control_rating).strip(), "Unknown")
+
+    return {
+        "threat_name": threat_name,
+        "likelihood": likelihood,
+        "vulnerabilities": vulnerabilities,
+        "control_id": control_name,
+        "ease_of_exploitation": ease_of_exploitation
+    }

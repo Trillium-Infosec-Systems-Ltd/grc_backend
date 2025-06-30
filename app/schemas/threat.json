@@ -16,7 +16,7 @@
         "fieldname": "likelihood",
         "fieldtype": "Select",
         "label": "Likelihood",
-        "options": ["Rare", "Unlikely", "Possible", "Likely", "Almost Certain"],
+        "options": ["Low","Medium","High"],
         "required": true,
         "span": 12,
         "display_on_frontend": true
