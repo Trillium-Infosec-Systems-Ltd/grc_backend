@@ -223,3 +223,24 @@ async def upload_files(files: List[UploadFile] = File(...)):
         filepaths.append(relative_path)
 
     return {"uploaded_paths": filepaths}
+
+
+@router.get("/assets_info/{asset_id}")
+async def get_asset_summary(
+    asset_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    query = """
+    MATCH (a:Asset {id: $asset_id})
+    RETURN a.type AS asset_type, a.criticality AS criticality_level
+    """
+    result = await db.run(query, asset_id=asset_id)
+    record = await result.single()
+
+    if not record:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    return {
+        "asset_type": record["asset_type"],
+        "criticality_level": record["criticality_level"]
+    }
