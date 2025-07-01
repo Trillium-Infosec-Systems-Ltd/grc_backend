@@ -247,7 +247,7 @@ async def get_asset_summary(
 
 
 @router.get("/threat_info/{threat_id}")
-async def get_threat_info(threat_id: str,asset_id: str = Query(...), db: AsyncSession = Depends(get_db)):
+async def get_threat_info(threat_id: str,asset_value: str = Query(...), db: AsyncSession = Depends(get_db)):
     crud = GenericCRUD(db, "threat")
     data = await crud.get_by_id(threat_id)
 
@@ -258,17 +258,17 @@ async def get_threat_info(threat_id: str,asset_id: str = Query(...), db: AsyncSe
     relationships = data.get("relationships", [])
     # print('+++++',relationships)
 
-    query = """
-    MATCH (a:assets {id: $asset_id})
-    RETURN a.type AS asset_type, a.criticality AS criticality_level
-    """
-    asset_value = "Unknown"
-    if asset_id:
-        result = await db.run(query, asset_id=asset_id)
-        record = await result.single()
-        asset_value = record["criticality_level"]
+    # query = """
+    # MATCH (a:assets {id: $asset_id})
+    # RETURN a.type AS asset_type, a.criticality AS criticality_level
+    # """
+    # asset_value = "Unknown"
+    # if asset_id:
+    #     result = await db.run(query, asset_id=asset_id)
+    #     record = await result.single()
+    #     asset_value = record["criticality_level"]
 
-        print('++++++++++++++++++asset value',asset_value)
+    #     print('++++++++++++++++++asset value',asset_value)
 
     
 

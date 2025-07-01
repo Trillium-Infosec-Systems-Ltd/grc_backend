@@ -1,13 +1,23 @@
-
 {
   "doctype": "Risk",
   "fields": [
+    {
+      "fieldname": "risk_by_asset",
+      "fieldtype": "Radio",
+      "label": "Risk by Asset",
+      "options":[ "Name", "Category" ],
+      "display_on_frontend": false,
+      "required": true,
+      "span": 12,
+      "default": "Name"
+    },
     {
       "fieldname": "risk_name",
       "fieldtype": "Data",
       "label": "Risk Name",
       "display_on_frontend": true,
       "required": true,
+      "hidden": true,
       "span": 12,
       "validation": {
         "min_length": 5,
@@ -21,6 +31,7 @@
       "options": ["Security", "Compliance", "Operational", "Financial", "Strategic"],
       "display_on_frontend": false,
       "required": true,
+      "hidden": true,
       "span": 12,
       "default": "Security"
     },
@@ -31,7 +42,8 @@
       "options": ["Low", "Medium", "High", "Critical"],
       "display_on_frontend": true,
       "span": 12,
-      "required": true
+      "required": true,
+      "hidden": true
     },
     {
       "fieldname": "risk_impact",
@@ -40,7 +52,8 @@
       "options": ["Low", "Medium", "High", "Critical"],
       "display_on_frontend": false,
       "span": 12,
-      "required": true
+      "required": true,
+      "hidden": true
     },
     {
       "fieldname": "department",
@@ -49,7 +62,8 @@
       "options": ["Finance", "IT", "HR", "Operations", "Legal"],
       "display_on_frontend": false,
       "span": 12,
-      "required": true
+      "required": true,
+      "hidden": true
     },
     {
       "fieldname": "owner",
@@ -61,19 +75,21 @@
       "relation_direction": "incoming",
       "display_on_frontend": true,
       "span": 12,
-      "required": true
+      "required": true,
+      "hidden": true
     },
     {
       "fieldname": "associated_assets",
-      "fieldtype": "MultiLink",
-      "label": "Associated Assets",
+      "fieldtype": "Link",
+      "label": "Associated Asset",
       "link_to": "assets",
        "target_field":"asset_name",
       "relationship_type": "POSESSESSES_RISK",
       "relation_direction": "incoming",
       "span": 12,
       "display_on_frontend": false,
-      "required": true
+      "required": true,
+      "isFetchData": true
     },
     {
       "fieldname": "type",
@@ -83,11 +99,22 @@
       "required": true,
       "span": 12,
       "default_label": false,
-      "display_on_frontend": true
+      "display_on_frontend": true,
+      "disabled": true
+    },
+    {
+      "fieldname": "asset_value",
+      "fieldtype": "Select",
+      "label": "Asset Value",
+      "options": ["Low", "Medium", "High", "Critical"],
+      "display_on_frontend": true,
+      "span": 12,
+      "required": true,
+      "disabled": true
     },
     {
       "fieldname": "associated_threats",
-      "fieldtype": "MultiLink",
+      "fieldtype": "Link",
       "label": "Associated Threats",
       "link_to": "threat",
        "target_field":"threat_name",
@@ -95,7 +122,8 @@
       "relation_direction": "incoming",
       "span": 12,
       "display_on_frontend": false,
-      "required": true
+      "required": true,
+      "isFetchData": true
     },
     {
       "fieldname": "threat_probability",
@@ -104,7 +132,8 @@
       "options": ["Low", "Medium", "High"],
       "display_on_frontend": true,
       "span": 12,
-      "required": false
+      "required": false,
+      "disabled": true
     },
     {
       "fieldname": "ease_of_exploitation",
@@ -113,7 +142,8 @@
       "options": ["Low", "Medium", "High"],
       "display_on_frontend": true,
       "span": 12,
-      "required": false
+      "required": false,
+      "disabled": true
     },
     {
       "fieldname": "date_identified",
@@ -121,7 +151,8 @@
       "label": "Date Identified",
       "display_on_frontend": false,
       "span": 12,
-      "required": true
+      "required": true,
+      "hidden": true
     },
     {
       "fieldname": "related_vulnerabilities",
@@ -129,7 +160,8 @@
       "label": "Related Vulnerabilities (CVEs)",
       "display_on_frontend": false,
       "span": 12,
-      "required": false
+      "required": false,
+      "disabled": true
     },
     {
       "fieldname": "risk_decision",
@@ -138,7 +170,7 @@
       "options": ["Accept", "Mitigate", "Transfer", "Avoid"],
       "display_on_frontend": true,
       "span": 12,
-      "required": true
+      "required": false
     },
     {
       "fieldname": "risk_description",
@@ -146,7 +178,8 @@
       "label": "Risk Description",
       "display_on_frontend": false,
       "span": 12,
-      "required": true
+      "required": true,
+      "hidden": true
     },
     {
       "fieldname": "treatment_plan",
@@ -154,7 +187,8 @@
       "label": "Treatment Plan",
       "display_on_frontend": false,
       "span": 12,
-      "required": false
+      "required": false,
+      "hidden": true
     },
     {
       "fieldname": "residual_risk",
@@ -163,7 +197,8 @@
       "options": ["Low", "Medium", "High"],
       "display_on_frontend": true,
       "span": 12,
-      "required": false
+      "required": false,
+      "disabled": true
     },
     {
       "fieldname": "review_date",
@@ -179,18 +214,20 @@
       "label": "Supporting Evidence",
       "display_on_frontend": false,
       "span": 12,
-      "required": false
+      "required": false,
+      "hidden": true
     },
     {
       "fieldname": "control_ids",
-      "fieldtype": "MultiLink",
+      "fieldtype": "Link",
       "label": "Control ID(s)",
       "link_to": "control",
        "target_field":"control_id",
       "relationship_type": "MITIGATES",
       "relation_direction": "incoming",
       "span": 12,
-      "required": false
+      "required": false,
+      "disabled": true
     },
     {
       "fieldname": "targeted_risks",
@@ -198,7 +235,8 @@
       "label": "Targeted Risk(s)",
       "link_to": "Risk",
       "span": 12,
-      "required": false
+      "required": false,
+      "hidden": true
     },
     {
       "fieldname": "control_category",
@@ -206,7 +244,8 @@
       "label": "Control Category",
       "options": ["Preventive", "Detective", "Corrective"],
       "span": 12,
-      "required": false
+      "required": false,
+      "hidden": true
     },
     {
       "fieldname": "task_status",
@@ -214,7 +253,8 @@
       "label": "Task Status",
       "options": ["Not Started", "In Progress", "Completed"],
       "span": 12,
-      "required": false
+      "required": false,
+      "hidden": true
     },
     {
       "fieldname": "priority",
@@ -222,7 +262,8 @@
       "label": "Priority",
       "options": ["Low", "Medium", "High", "Critical"],
       "span": 12,
-      "required": false
+      "required": false,
+      "hidden": true
     },
     {
       "fieldname": "review_frequency",
@@ -230,21 +271,24 @@
       "label": "Review Frequency",
       "options": ["Monthly", "Quarterly", "Annually"],
       "span": 12,
-      "required": false
+      "required": false,
+      "hidden": true
     },
     {
       "fieldname": "due_date",
       "fieldtype": "Date",
       "label": "Due Date",
       "span": 12,
-      "required": false
+      "required": false,
+      "hidden": true
     },
     {
       "fieldname": "implementation_plan",
       "fieldtype": "LongText",
       "label": "Implementation Plan",
       "span": 12,
-      "required": false
+      "required": false,
+      "hidden": true
     },
     {
       "fieldname": "linked_clause",
@@ -252,7 +296,8 @@
       "label": "Linked Clause or Policy",
       "link_to": "Clause",
       "span": 12,
-      "required": false
+      "required": false,
+      "hidden": true
     },
     {
       "fieldname": "dependencies",
@@ -260,14 +305,16 @@
       "label": "Dependencies",
       "link_to": "Task",
       "span": 12,
-      "required": false
+      "required": false,
+      "hidden": true
     },
     {
       "fieldname": "notes",
       "fieldtype": "LongText",
       "label": "Notes",
       "span": 12,
-      "required": false
+      "required": false,
+      "hidden": true
     },
     {
       "fieldname": "updated_at",
