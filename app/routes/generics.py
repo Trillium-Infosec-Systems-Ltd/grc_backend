@@ -247,7 +247,7 @@ async def get_asset_summary(
 
 
 @router.get("/threat_info/{threat_id}")
-async def get_threat_info(threat_id: str, db: AsyncSession = Depends(get_db)):
+async def get_threat_info(threat_id: str,asset_id: str = Query(...), db: AsyncSession = Depends(get_db)):
     crud = GenericCRUD(db, "threat")
     data = await crud.get_by_id(threat_id)
 
@@ -258,9 +258,25 @@ async def get_threat_info(threat_id: str, db: AsyncSession = Depends(get_db)):
     relationships = data.get("relationships", [])
     # print('+++++',relationships)
 
+    query = """
+    MATCH (a:assets {id: $asset_id})
+    RETURN a.type AS asset_type, a.criticality AS criticality_level
+    """
+    asset_value = "Unknown"
+    if asset_id:
+        result = await db.run(query, asset_id=asset_id)
+        record = await result.single()
+        asset_value = record["criticality_level"]
+
+        print('++++++++++++++++++asset value',asset_value)
+
+    
+
+
     threat_name = node.get("threat_name")
     likelihood = node.get("likelihood")
-    asset_value = "High"
+    
+    
     vulnerabilities = None
     control_name = None
     control_rating = None
@@ -273,7 +289,6 @@ async def get_threat_info(threat_id: str, db: AsyncSession = Depends(get_db)):
              
             vulnerabilities = vuln.get("name")
         elif rel["type"] == "MITIGATES":
-            print('++++++++++'+ 'i am in the control relationship')
             ctrl = rel["node"]
             control_name = ctrl.get("control_id")
             print(control_name)
