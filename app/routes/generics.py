@@ -231,7 +231,7 @@ async def get_asset_summary(
     db: AsyncSession = Depends(get_db)
 ):
     query = """
-    MATCH (a:Asset {id: $asset_id})
+    MATCH (a:assets {id: $asset_id})
     RETURN a.type AS asset_type, a.criticality AS criticality_level
     """
     result = await db.run(query, asset_id=asset_id)
@@ -244,6 +244,7 @@ async def get_asset_summary(
         "asset_type": record["asset_type"],
         "criticality_level": record["criticality_level"]
     }
+
 
 @router.get("/threat_info/{threat_id}")
 async def get_threat_info(threat_id: str, db: AsyncSession = Depends(get_db)):
@@ -259,7 +260,7 @@ async def get_threat_info(threat_id: str, db: AsyncSession = Depends(get_db)):
 
     threat_name = node.get("threat_name")
     likelihood = node.get("likelihood")
-
+    asset_value = "High"
     vulnerabilities = None
     control_name = None
     control_rating = None
@@ -285,10 +286,36 @@ async def get_threat_info(threat_id: str, db: AsyncSession = Depends(get_db)):
     }
     ease_of_exploitation = ease_map.get(str(control_rating).strip(), "Unknown")
 
+
+    RISK_MATRIX = {
+        "Low": {
+            "Low":   {"Low": "Low", "Medium": "Low", "High": "Med"},
+            "Medium": {"Low": "Low", "Medium": "Med", "High": "Med"},
+            "High": {"Low": "Med", "Medium": "Med", "High": "High"},
+        },
+        "Medium": {
+            "Low":   {"Low": "Low", "Medium": "Med", "High": "Med"},
+            "Medium": {"Low": "Med", "Medium": "Med", "High": "Med"},
+            "High": {"Low": "Med", "Medium": "High", "High": "Very High"},
+        },
+        "High": {
+            "Low":   {"Low": "Med", "Medium": "Med", "High": "Med"},
+            "Medium": {"Low": "Med", "Medium": "Med", "High": "High"},
+            "High": {"Low": "High", "Medium": "Very High", "High": "Very High"},
+        }
+    }
+
+    try:
+        risk = RISK_MATRIX[likelihood][asset_value][ease_of_exploitation]
+    except KeyError:
+        risk = "Unknown"
+
+
     return {
         "threat_name": threat_name,
         "likelihood": likelihood,
         "vulnerabilities": vulnerabilities,
         "control_id": control_name,
-        "ease_of_exploitation": ease_of_exploitation
+        "ease_of_exploitation": ease_of_exploitation,
+        "risk": risk
     }
