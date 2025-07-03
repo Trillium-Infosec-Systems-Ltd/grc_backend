@@ -29,18 +29,21 @@
       },
       {
         "fieldname": "department",
-        "fieldtype": "Select",
+        "fieldtype": "Link",
         "label": "Department",
-        "options": ["Finance", "IT", "HR", "Operations", "Legal", "SOC Team"],
+        "link_to": "department",
+        "target_field": "department_name",
+        "relationship_type": "owns",
+        "relationship_direction": "incoming",
         "display_on_frontend": true,
-        "required": true,
+        "required": false,
         "span": 12
       },
       {
-        "fieldname": "criticality",
+        "fieldname": "asset_value",
         "fieldtype": "Select",
-        "label": "Criticality",
-        "options": ["Low", "Medium", "High", "Critical"],
+        "label": "Asset Value",
+        "options": ["Low", "Medium", "High"],
         "default": "Medium",
         "display_on_frontend": true,
         "required": true,
@@ -67,5 +70,7 @@
         "hidden": true
       }
     ]
-  }
-  
+  }  
+
+
+

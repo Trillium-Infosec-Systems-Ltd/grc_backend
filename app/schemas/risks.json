@@ -16,7 +16,7 @@
       "fieldtype": "Data",
       "label": "Risk Name",
       "display_on_frontend": true,
-      "required": true,
+      "required": false,
       "hidden": true,
       "span": 12,
       "validation": {
@@ -30,7 +30,7 @@
       "label": "Risk Category",
       "options": ["Security", "Compliance", "Operational", "Financial", "Strategic"],
       "display_on_frontend": false,
-      "required": true,
+      "required": false,
       "hidden": true,
       "span": 12,
       "default": "Security"
@@ -42,7 +42,7 @@
       "options": ["Low", "Medium", "High", "Critical"],
       "display_on_frontend": true,
       "span": 12,
-      "required": true,
+      "required": false,
       "hidden": true
     },
     {
@@ -52,7 +52,7 @@
       "options": ["Low", "Medium", "High", "Critical"],
       "display_on_frontend": false,
       "span": 12,
-      "required": true,
+      "required": false,
       "hidden": true
     },
     {
@@ -62,7 +62,7 @@
       "options": ["Finance", "IT", "HR", "Operations", "Legal"],
       "display_on_frontend": false,
       "span": 12,
-      "required": true,
+      "required": false,
       "hidden": true
     },
     {
@@ -75,7 +75,7 @@
       "relation_direction": "incoming",
       "display_on_frontend": true,
       "span": 12,
-      "required": true,
+      "required": false,
       "hidden": true
     },
     {
@@ -86,9 +86,12 @@
        "target_field":"asset_name",
       "relationship_type": "POSESSESSES_RISK",
       "relation_direction": "incoming",
+      "display_on_field": "risk_by_asset",
+      "display_on_value": "Name",
       "span": 12,
       "display_on_frontend": false,
-      "required": true,
+      "required_on_field": "risk_by_asset",
+      "required_on_value": "Name",
       "isFetchData": true
     },
     {
@@ -100,22 +103,24 @@
       "span": 12,
       "default_label": false,
       "display_on_frontend": true,
-      "disabled": true
+      "disable_on_field": "risk_by_asset",
+      "disable_on_value": "Name"
     },
     {
       "fieldname": "asset_value",
       "fieldtype": "Select",
       "label": "Asset Value",
-      "options": ["Low", "Medium", "High", "Critical"],
+      "options": ["Low", "Medium", "High"],
       "display_on_frontend": true,
       "span": 12,
       "required": true,
-      "disabled": true
+      "disable_on_field": "risk_by_asset",
+      "disable_on_value": "Name"
     },
     {
       "fieldname": "associated_threats",
       "fieldtype": "Link",
-      "label": "Associated Threats",
+      "label": "Associated Threat",
       "link_to": "threat",
        "target_field":"threat_name",
       "relationship_type": "POSESSESSES_RISK",
@@ -123,7 +128,8 @@
       "span": 12,
       "display_on_frontend": false,
       "required": true,
-      "isFetchData": true
+      "isFetchData": true,
+      "depend_on_field": "asset_value"
     },
     {
       "fieldname": "threat_probability",
@@ -131,6 +137,27 @@
       "label": "Threat Probability",
       "options": ["Low", "Medium", "High"],
       "display_on_frontend": true,
+      "span": 12,
+      "required": false,
+      "disabled": true
+    },
+    {
+      "fieldname": "related_vulnerabilities",
+      "fieldtype": "Tags",
+      "label": "Related Vulnerabilities (CVEs)",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": false,
+      "disabled": true
+    },
+    {
+      "fieldname": "control_ids",
+      "fieldtype": "Link",
+      "label": "Control ID(s)",
+      "link_to": "control",
+       "target_field":"control_id",
+      "relationship_type": "MITIGATES",
+      "relation_direction": "incoming",
       "span": 12,
       "required": false,
       "disabled": true
@@ -151,14 +178,15 @@
       "label": "Date Identified",
       "display_on_frontend": false,
       "span": 12,
-      "required": true,
+      "required": false,
       "hidden": true
     },
-    {
-      "fieldname": "related_vulnerabilities",
-      "fieldtype": "Tags",
-      "label": "Related Vulnerabilities (CVEs)",
-      "display_on_frontend": false,
+      {
+      "fieldname": "residual_risk",
+      "fieldtype": "Select",
+      "label": "Residual Risk",
+      "options": ["Low", "Medium", "High"],
+      "display_on_frontend": true,
       "span": 12,
       "required": false,
       "disabled": true
@@ -178,7 +206,7 @@
       "label": "Risk Description",
       "display_on_frontend": false,
       "span": 12,
-      "required": true,
+      "required": false,
       "hidden": true
     },
     {
@@ -189,16 +217,6 @@
       "span": 12,
       "required": false,
       "hidden": true
-    },
-    {
-      "fieldname": "residual_risk",
-      "fieldtype": "Select",
-      "label": "Residual Risk",
-      "options": ["Low", "Medium", "High"],
-      "display_on_frontend": true,
-      "span": 12,
-      "required": false,
-      "disabled": true
     },
     {
       "fieldname": "review_date",
@@ -216,18 +234,6 @@
       "span": 12,
       "required": false,
       "hidden": true
-    },
-    {
-      "fieldname": "control_ids",
-      "fieldtype": "Link",
-      "label": "Control ID(s)",
-      "link_to": "control",
-       "target_field":"control_id",
-      "relationship_type": "MITIGATES",
-      "relation_direction": "incoming",
-      "span": 12,
-      "required": false,
-      "disabled": true
     },
     {
       "fieldname": "targeted_risks",

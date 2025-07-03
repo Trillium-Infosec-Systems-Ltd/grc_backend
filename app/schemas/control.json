@@ -1,5 +1,4 @@
 
-
 {
   "doctype": "Control",
   "fields": [
@@ -20,12 +19,59 @@
       "required": true
     },
     {
+      "fieldname": "category",
+      "fieldtype": "Data",
+      "label": "Category",
+      "display_on_frontend": true,
+      "span": 12,
+      "required": true
+    },
+    {
+      "fieldname": "sub_category",
+      "fieldtype": "Data",
+      "label": "Sub Category",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": true
+    },
+    {
+      "fieldname": "confidentiality",
+      "fieldtype": "Radio",
+      "label": "Confidentiality",
+      "options":[ "Yes", "No" ],
+      "display_on_frontend": true,
+      "required": false,
+      "span": 12,
+      "default": "No"
+    },
+    {
+      "fieldname": "integrity",
+      "fieldtype": "Radio",
+      "label": "Integrity",
+      "options":[ "Yes", "No" ],
+      "display_on_frontend": true,
+      "required": false,
+      "span": 12,
+      "default": "No"
+    },
+    {
+      "fieldname": "availability",
+      "fieldtype": "Radio",
+      "label": "Availability",
+      "options":[ "Yes", "No" ],
+      "display_on_frontend": true,
+      "required": false,
+      "span": 12,
+      "default": "No"
+    },
+    {
       "fieldname": "framework",
       "fieldtype": "Select",
       "label": "Framework",
       "span": 12,
       "options": ["NIST CSF", "ISO 27001", "PCI DSS", "HIPAA"],
-      "required": true,
+      "required": false,
+      "hidden": true,
       "display_on_frontend": false,
       "default": "NIST CSF"
     },
@@ -37,16 +83,34 @@
        "target_field":"name",
       "span": 12,
       "display_on_frontend": false,
-      "required": true
+      "required": false,
+      "hidden": true
     },
 
+    {
+      "fieldname": "reference_evidence",
+      "fieldtype": "LongText",
+      "label": "Reference Evidence",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "observation",
+      "fieldtype": "LongText",
+      "label": "Observation",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": false
+    },
     {
       "fieldname": "implementation_guidelines",
       "fieldtype": "LongText",
       "label": "Implementation Guidelines",
       "display_on_frontend": false,
       "span": 12,
-      "required": true
+      "required": false,
+      "hidden": true
     },
     {
       "fieldname": "tools_systems",
@@ -54,6 +118,7 @@
       "label": "Tools/Systems in Use",
       "options": ["Okta", "Azure AD", "Google Workspace", "AWS IAM", "Other"],
       "display_on_frontend": false,
+      "hidden": true,
       "span": 12
     },
     {
@@ -62,6 +127,7 @@
       "label": "Linked Policies",
       "link_to": "Policy",
       "display_on_frontend": false,
+      "hidden": true,
       "span": 12
     },
     {
@@ -70,7 +136,8 @@
       "label": "Last Updated",
       "display_on_frontend": false,
       "span": 12,
-      "required": true
+      "hidden": true,
+      "required": false
     },
     {
       "fieldname": "next_review_date",
@@ -85,6 +152,7 @@
       "fieldtype": "LongText",
       "label": "Audit Requirements",
       "display_on_frontend": false,
+      "hidden": true,
       "span": 12
     },
     {
@@ -92,6 +160,7 @@
       "fieldtype": "LongText",
       "label": "Known Gaps/Issues",
       "display_on_frontend": false,
+      "hidden": true,
       "span": 12
     },
     {
@@ -117,6 +186,7 @@
       "fieldtype": "LongText",
       "label": "Description",
       "span": 12,
+      "hidden": true,
       "display_on_frontend": false
     },
     {
@@ -124,13 +194,13 @@
       "fieldtype": "File",
       "label": "Attached Evidence / Files",
       "span": 12,
+      "hidden": true,
       "display_on_frontend": false
     },
      {
       "fieldname": "rating",
       "fieldtype": "Data",
       "label": "Control Rating",
-      "options": ["Low", "Medium", "High", "Critical"],
       "required": false,
       "default_label": false,
       "span": 12,
@@ -148,7 +218,8 @@
         "Servers & Databases",
         "Cloud Infrastructure"
       ],
-      "display_on_frontend": true,
+      "display_on_frontend": false,
+      "hidden": true,
       "span": 12
     },
     {
@@ -158,6 +229,16 @@
       "span": 12,
       "display_on_frontend": false
     },
+        {
+      "fieldname": "ease_of_exploitation",
+      "fieldtype": "Data",
+      "label": "ease_of_exploitation",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": false,
+      "hidden":true
+    },
+    
     {
       "fieldname": "control_ratting_percentage",
       "fieldtype": "Data",
@@ -171,7 +252,7 @@
       "fieldtype": "AssessmentProgress",
       "label": "Compliance Status",
       "options": ["Non-Compliant","Partially Compliant","Compliant" ],
-      "required": true,
+      "required": false,
       "span": 24,
       "display_on_frontend": true
     },

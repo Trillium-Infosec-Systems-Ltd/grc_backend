@@ -1,4 +1,3 @@
-
 {
   "doctype": "Asset",
   "fields": [
@@ -16,33 +15,58 @@
       }
     },
     {
+      "fieldname": "asset_id",
+      "fieldtype": "Data",
+      "label": "Asset ID",
+      "default_label": true,
+      "required": true,
+      "display_on_frontend": true,
+      "span": 12,
+      "validation": {
+        "min_length": 2,
+        "max_length": 100
+      }
+    },
+    {
       "fieldname": "type",
-      "fieldtype": "Select",
-      "label": "Asset Type",
-      "options": ["Database", "Server", "Web Application", "Endpoint Security"],
+      "fieldtype": "Link",
+      "label": "Asset Category",
+      "link_to": "asset_type",
+      "target_field": "type_name",
+      "relationship_direction":"outgoings",
+      "relationship_type":"has",
       "required": true,
       "span": 12,
       "default_label": false,
-      "display_on_frontend": true
+      "display_on_frontend": true,
+      "isFetchingData": true,
+      "fetch_to": {
+        "to": "/data/asset_type",
+        "query_params": [],
+        "path_params": ["type"]
+      }
     },
     {
-      "fieldname": "criticality",
+      "fieldname": "asset_value",
       "fieldtype": "Select",
-      "label": "Criticality Level",
-      "options": ["Low", "Medium", "High", "Critical"],
+      "label": "Asset Value",
+      "options": ["Low", "Medium", "High"],
       "required": true,
+      "disabled": true,
       "default_label": false,
       "span": 12,
       "display_on_frontend": true,
       "is_colorful": true,
-      "default": "Medium"
+      "default": "Medium",
+      "data_field": "asset_value"
     },
     {
       "fieldname": "environment",
       "fieldtype": "Select",
       "label": "Environment",
       "options": ["Staging", "Dev", "Production"],
-      "required": true,
+      "required": false,
+      "hidden": true,
       "default_label": false,
       "span": 12,
       "display_on_frontend": false,
@@ -53,10 +77,11 @@
       "fieldtype": "Select",
       "label": "Exposure Level",
       "options": ["Internal", "External"],
-      "required": true,
+      "required": false,
       "default_label": false,
       "span": 12,
       "display_on_frontend": false,
+      "hidden": true,
       "defaultValue": "Internal"
     },
     {
@@ -66,7 +91,8 @@
       "options": ["Finance", "IT", "HR", "Operations", "Legal", "SOC Team"],
       "display_on_frontend": false,
       "span": 12,
-      "required": true
+      "hidden": true,
+      "required": false
     },
     {
       "fieldname": "ip_hostname",
@@ -76,14 +102,33 @@
       "required": false,
       "span": 12,
       "default_label": false,
+      "hidden": true,
       "validation": {
         "regex": "^(([0-9]{1,3}\\.){3}[0-9]{1,3}|[a-zA-Z0-9\\-]+(\\.[a-zA-Z0-9\\-]+)+)$"
       }
     },
     {
+      "fieldname": "asset_information",
+      "fieldtype": "Data",
+      "label": "Asset Information",
+      "span": 12,
+      "default_label": false,
+      "display_on_frontend": false,
+      "required": false
+    },
+    {
+      "fieldname": "process_name",
+      "fieldtype": "Data",
+      "label": "Process Name",
+      "span": 12,
+      "default_label": false,
+      "display_on_frontend": false,
+      "required": false
+    },
+    {
       "fieldname": "owner",
       "fieldtype": "Link",
-      "label": "Asset Owner",
+      "label": "Process Owner",
       "link_to": "users",
       "target_field":"name",
       "relationship_direction":"incoming",
@@ -99,8 +144,9 @@
       "label": "Contains Sensitive Data",
       "options":[ "Yes", "No" ],
       "display_on_frontend": false,
-      "required": true,
+      "required": false,
       "span": 12,
+      "hidden": true,
       "default": "Yes"
     },
     {
@@ -108,8 +154,9 @@
       "fieldtype": "Select",
       "label": "Confidentiality Score",
       "options": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
-      "display_on_frontend": true,
+      "display_on_frontend": false,
       "required": false,
+      "hidden": true,
       "span": 12
     },
     {
@@ -117,8 +164,9 @@
       "fieldtype": "Select",
       "label": "Integrity Score",
       "options": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
-      "display_on_frontend": true,
+      "display_on_frontend": false,
       "required": false,
+      "hidden": true,
       "span": 12
     },
     {
@@ -126,15 +174,40 @@
       "fieldtype": "Select",
       "label": "Availability Score",
       "options": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
-      "display_on_frontend": true,
+      "display_on_frontend": false,
       "required": false,
+      "hidden": true,
       "span": 12
     },
     {
       "fieldname": "notes",
       "fieldtype": "Text",
       "label": "Notes",
-      "content": "",
+      "display_on_frontend": false,
+      "required": false,
+      "hidden": true,
+      "span": 12
+    },
+    {
+      "fieldname": "operating_unit",
+      "fieldtype": "Data",
+      "label": "Operating Unit / Function",
+      "display_on_frontend": false,
+      "required": false,
+      "span": 12
+    },
+    {
+      "fieldname": "location",
+      "fieldtype": "LongText",
+      "label": "Location",
+      "display_on_frontend": false,
+      "required": false,
+      "span": 12
+    },
+    {
+      "fieldname": "remarks",
+      "fieldtype": "LongText",
+      "label": "Remarks",
       "display_on_frontend": false,
       "required": false,
       "span": 12
@@ -148,7 +221,7 @@
       "target_field":"control_name",
       "relationship_type": "HAS_CONTROL",
       "relation_direction": "outgoing",
-
+      "hidden": true,
       "display_on_frontend": false,
       "required": false,
       "span": 12
@@ -164,6 +237,7 @@
       "span": 12,
       "default_label": false,
       "display_on_frontend": false,
+      "hidden": true,
       "required": false
     },
     {

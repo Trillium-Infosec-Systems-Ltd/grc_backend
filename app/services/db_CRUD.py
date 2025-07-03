@@ -348,7 +348,14 @@ class GenericCRUD:
         if self.doctype == "control" and isinstance(data.get("control_assessment"), list):
             data["control_assessment"] = json.dumps(data["control_assessment"])  # Serialize
             data["updated_at"] = now  # Already set, but reinforces clarity
+            ease_map = {
+                "High": "Low",
+                "Medium": "Medium",
+                "Low": "High"
+            }
+            ease_of_exploitation = ease_map.get(str(data['rating']).strip(), "Unknown")
 
+            data["ease_of_exploitation"] =ease_of_exploitation
         # ✅ Generic update logic for all doctypes
         query = f"""
         MATCH (n:{self.doctype} {{id: $item_id}})
