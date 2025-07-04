@@ -232,17 +232,19 @@ async def get_asset_summary(
 ):
     query = """
     MATCH (a:assets {id: $asset_id})
-    RETURN a.type AS asset_type, a.criticality AS criticality_level
+    RETURN a.type AS asset_type, a.asset_value AS asset_value
     """
     result = await db.run(query, asset_id=asset_id)
     record = await result.single()
 
     if not record:
         raise HTTPException(status_code=404, detail="Asset not found")
+    
+    # import pdb;pdb.set_trace()
 
     return {
         "asset_type": record["asset_type"],
-        "criticality_level": record["criticality_level"]
+        "asset_value": record["asset_value"]
     }
 
 
@@ -287,7 +289,7 @@ async def get_threat_info(threat_id: str,asset_value: str = Query(...), db: Asyn
         if rel["type"] == "CAUSES_THREAT":
             vuln = rel["node"]
              
-            vulnerabilities = vuln.get("name")
+            vulnerabilities = vuln.get("vulnerability_name")
         elif rel["type"] == "MITIGATES":
             ctrl = rel["node"]
             control_name = ctrl.get("control_id")
