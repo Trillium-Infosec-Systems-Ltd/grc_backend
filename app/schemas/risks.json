@@ -72,7 +72,7 @@
       "link_to": "users",
        "target_field":"name",
       "relationship_type": "OWNS",
-      "relation_direction": "incoming",
+      "relationship_direction": "incoming",
       "display_on_frontend": true,
       "span": 12,
       "required": false,
@@ -85,26 +85,34 @@
       "link_to": "assets",
        "target_field":"asset_name",
       "relationship_type": "POSESSESSES_RISK",
-      "relation_direction": "incoming",
+      "relationship_direction": "incoming",
       "display_on_field": "risk_by_asset",
       "display_on_value": "Name",
       "span": 12,
       "display_on_frontend": false,
       "required_on_field": "risk_by_asset",
       "required_on_value": "Name",
-      "isFetchData": true
+       "isFetchingData": true
     },
     {
       "fieldname": "type",
-      "fieldtype": "Select",
+      "fieldtype": "Link",
       "label": "Asset Category",
-      "options": ["Database", "Server", "Web Application", "Endpoint Security"],
+      "link_to": "asset_type",
+      "target_field": "asset_type",
+        "relationship_type": "has",
+      "relationship_direction": "incoming",
       "required": true,
       "span": 12,
       "default_label": false,
       "display_on_frontend": true,
       "disable_on_field": "risk_by_asset",
-      "disable_on_value": "Name"
+      "disable_on_value": "Name",
+      "isFetchingData": true,
+      "fetch_to": {
+        "to": "/data/asset_type",
+        "path_params": ["type"]
+      }
     },
     {
       "fieldname": "asset_value",
@@ -114,8 +122,8 @@
       "display_on_frontend": true,
       "span": 12,
       "required": true,
-      "disable_on_field": "risk_by_asset",
-      "disable_on_value": "Name"
+      "disabled": true,
+      "data_field": "asset_value"
     },
     {
       "fieldname": "associated_threats",
@@ -124,12 +132,13 @@
       "link_to": "threat",
        "target_field":"threat_name",
       "relationship_type": "POSESSESSES_RISK",
-      "relation_direction": "incoming",
+      "relationship_direction": "incoming",
       "span": 12,
       "display_on_frontend": false,
       "required": true,
       "isFetchData": true,
-      "depend_on_field": "asset_value"
+      "depend_on_field": "asset_value",
+      "isFetchingData": true
     },
     {
       "fieldname": "threat_probability",
@@ -143,9 +152,14 @@
     },
     {
       "fieldname": "related_vulnerabilities",
-      "fieldtype": "Tags",
+      "fieldtype": "Link",
       "label": "Related Vulnerabilities (CVEs)",
+      "link_to": "vulnerability",
+      "target_field": "vulnerability",
+      "relationship_type": "has",
+      "relationship_direction": "incoming",
       "display_on_frontend": false,
+      "data_field": "vulnerability",
       "span": 12,
       "required": false,
       "disabled": true
@@ -157,7 +171,7 @@
       "link_to": "control",
        "target_field":"control_id",
       "relationship_type": "MITIGATES",
-      "relation_direction": "incoming",
+      "relationship_direction": "incoming",
       "span": 12,
       "required": false,
       "disabled": true
@@ -167,7 +181,7 @@
       "fieldtype": "Select",
       "label": "Ease of Exploitation",
       "options": ["Low", "Medium", "High"],
-      "display_on_frontend": true,
+"display_on_frontend": true,
       "span": 12,
       "required": false,
       "disabled": true

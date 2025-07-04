@@ -22,28 +22,35 @@
         "display_on_frontend": true
       },
       {
-        "fieldname": "vulnerabilities",
+        "fieldname": "vulnerability",
         "fieldtype": "Link",
-        "label": "vulnerabilities",
+        "label": "Vulnerability",
         "link_to": "vulnerability",
-        "relationship_type": "CAUSES_THREAT",
         "target_field":"vulnerability_name",
-        "relation_direction": "incoming",
+        "relationship_direction": "incoming",
+        "relationship_type": "CAUSES_THREAT",
         "display_on_frontend": true,
         "required": false,
-        "span": 12
+        "span": 12,
+        "isFetchingData": true,
+      "fetch_to": {
+        "to": "/data/vulnerability",
+        "path_params": ["vulnerability"]
+      }
       },
       {
         "fieldname": "relevant_controls",
         "fieldtype": "Link",
         "label": "Relevant Controls",
         "link_to": "control",
-         "target_field":"control_name",
+         "target_field":"control_id",
         "relationship_type": "MITIGATES",
-        "relation_direction": "incoming",
+        "relationship_direction": "incoming",
         "display_on_frontend": true,
+        "disabled": true,
         "required": false,
-        "span": 12
+        "span": 12,
+        "data_field": "relevant_control_id"
       },
       {
         "fieldname": "created_at",
@@ -62,6 +69,4 @@
         "hidden": true
       }
     ]
-  }
- 
- 
+  }  
