@@ -304,18 +304,18 @@ async def get_threat_info(threat_id: str,asset_value: str = Query(...), db: Asyn
 
     RISK_MATRIX = {
         "Low": {
-            "Low":   {"Low": "Low", "Medium": "Low", "High": "Med"},
-            "Medium": {"Low": "Low", "Medium": "Med", "High": "Med"},
-            "High": {"Low": "Med", "Medium": "Med", "High": "High"},
+            "Low":   {"Low": "Low", "Medium": "Low", "High": "Medium"},
+            "Medium": {"Low": "Low", "Medium": "Medium", "High": "Medium"},
+            "High": {"Low": "Medium", "Medium": "Medium", "High": "High"},
         },
         "Medium": {
-            "Low":   {"Low": "Low", "Medium": "Med", "High": "Med"},
-            "Medium": {"Low": "Med", "Medium": "Med", "High": "Med"},
-            "High": {"Low": "Med", "Medium": "High", "High": "Very High"},
+            "Low":   {"Low": "Low", "Medium": "Medium", "High": "Medium"},
+            "Medium": {"Low": "Medium", "Medium": "Medium", "High": "Medium"},
+            "High": {"Low": "Medium", "Medium": "High", "High": "Very High"},
         },
         "High": {
-            "Low":   {"Low": "Med", "Medium": "Med", "High": "Med"},
-            "Medium": {"Low": "Med", "Medium": "Med", "High": "High"},
+            "Low":   {"Low": "Medium", "Medium": "Medium", "High": "Medium"},
+            "Medium": {"Low": "Medium", "Medium": "Medium", "High": "High"},
             "High": {"Low": "High", "Medium": "Very High", "High": "Very High"},
         }
     }
