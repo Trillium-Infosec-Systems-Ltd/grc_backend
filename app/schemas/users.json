@@ -33,7 +33,27 @@
         "fieldtype": "Select",
         "label": "Role",
         "display_on_frontend":true,
-        "options": ["super_admin", "partner", "user"],
+        "options": ["super_admin", "partner", "Employee"],
+        "span" :12,
+        "required": true
+      },
+
+      {
+        "fieldname": "password",
+        "fieldtype": "Data",
+        "label": "Password",
+        "display_on_frontend":true,
+        "span" :12,
+        "required": true
+      },
+
+
+
+        {
+        "fieldname": "org_id",
+        "fieldtype": "Data",
+        "label": "ORG ID",
+        "display_on_frontend":true,
         "span" :12,
         "required": true
       },
