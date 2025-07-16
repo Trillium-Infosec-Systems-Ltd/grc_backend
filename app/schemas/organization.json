@@ -1,0 +1,44 @@
+{
+    "doctype": "organization",
+    "fields": [
+      {
+        "fieldname": "organization_name",
+        "fieldtype": "Data",
+        "label": "Organization Name",
+        "display_on_frontend": true,
+        "span": 12,
+        "required": true
+      },
+      {
+        "fieldname": "organization_status",
+        "fieldtype": "Select",
+        "label": "Status",
+        "options": ["Active", "Inactive"],
+        "default": "Active",
+        "display_on_frontend": true,
+        "required": true,
+        "span": 12
+      },
+      {
+        "fieldname": "created_at",
+        "fieldtype": "Datetime",
+        "label": "Created at",
+        "span": 12,
+        "default_label": false,
+        "display_on_frontend": false,
+        "required": false,
+        "hidden": true
+      },
+      {
+        "fieldname": "updated_at",
+        "fieldtype": "Datetime",
+        "label": "Updated at",
+        "span": 12,
+        "default_label": false,
+        "display_on_frontend": false,
+        "required": false,
+        "hidden": true
+      }
+    
+    ]
+}

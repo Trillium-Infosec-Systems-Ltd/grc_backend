@@ -33,30 +33,11 @@
         "fieldtype": "Select",
         "label": "Role",
         "display_on_frontend":true,
-        "options": ["Admin", "Manager", "Employee"],
+        "options": ["super_admin", "partner", "user"],
         "span" :12,
         "required": true
       },
-      {
-        "fieldname": "department",
-        "fieldtype": "Link",
-        "label": "Department",
-        "link_to": "department",
-        "target_field":"department_name",
-        "display_on_frontend":true,
-        "span" :12,
-        "required": false
-      },
-      {
-        "fieldname": "status",
-        "fieldtype": "Select",
-        "label": "Status",
-        "options": ["Active", "Inactive", "Suspended"],
-        "display_on_frontend":true,
-        "span" :12,
-        "required": true,
-        "default": "Active"
-      },
+
       {
         "fieldname": "updated_at",
         "fieldtype": "Data",
