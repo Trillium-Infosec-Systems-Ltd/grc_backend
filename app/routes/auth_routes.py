@@ -11,7 +11,7 @@ from services.auth_service import hash_password, verify_password, create_access_
 # router = APIRouter(prefix="/auth", tags=["Auth"])
 router = APIRouter()
 
-@router.post("/users")
+@router.post("/register")
 async def register(user: UserCreate,  session: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
     # Step 1: Check if user already exists
     
