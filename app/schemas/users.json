@@ -50,9 +50,9 @@
 
 
         {
-        "fieldname": "org_id",
+        "fieldname": "organization",
         "fieldtype": "Data",
-        "label": "ORG ID",
+        "label": "Organization",
         "display_on_frontend":true,
         "span" :12,
         "required": true
