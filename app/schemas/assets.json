@@ -19,13 +19,14 @@
       "fieldtype": "Data",
       "label": "Asset ID",
       "default_label": true,
-      "required": true,
+      "required": false,
       "display_on_frontend": true,
       "span": 12,
       "validation": {
         "min_length": 2,
         "max_length": 100
-      }
+      },
+      "hidden": true
     },
     {
       "fieldname": "type",
@@ -47,18 +48,17 @@
       }
     },
     {
-      "fieldname": "asset_value",
-      "fieldtype": "Select",
-      "label": "Asset Value",
-      "options": ["Low", "Medium", "High"],
-      "required": true,
-      "disabled": true,
-      "default_label": false,
+      "fieldname": "owner",
+      "fieldtype": "Link",
+      "label": "Owner",
+      "link_to": "users",
+      "target_field":"name",
+      "relationship_direction":"incoming",
+      "relationship_type":"owns",
       "span": 12,
-      "display_on_frontend": true,
-      "is_colorful": true,
-      "default": "Medium",
-      "data_field": "asset_value"
+      "default_label": false,
+      "display_on_frontend": false,
+      "required": true
     },
     {
       "fieldname": "environment",
@@ -66,11 +66,47 @@
       "label": "Environment",
       "options": ["Staging", "Dev", "Production"],
       "required": false,
-      "hidden": true,
       "default_label": false,
       "span": 12,
       "display_on_frontend": false,
       "default": "Staging"
+    },
+    {
+      "fieldname": "department",
+      "fieldtype": "Link",
+      "label": "Department",
+      "link_to": "department",
+      "target_field": "department_name",
+       "relationship_direction":"incoming",
+      "relationship_type":"owns",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": false
+    },
+     {
+      "fieldname": "ip_hostname",
+      "fieldtype": "Data",
+      "label": "IP/Hostname",
+      "display_on_frontend": false,
+      "required": false,
+      "span": 12,
+      "default_label": false,
+      "validation": {
+        "regex": "^(([0-9]{1,3}\\.){3}[0-9]{1,3}|[a-zA-Z0-9\\-]+(\\.[a-zA-Z0-9\\-]+)+)$"
+      }
+    },
+     {
+      "fieldname": "asset_value",
+      "fieldtype": "Select",
+      "label": "Asset Value",
+      "options": ["Low", "Medium", "High"],
+      "required": true,
+      "default_label": false,
+      "span": 12,
+      "display_on_frontend": true,
+      "is_colorful": true,
+      "default": "Medium",
+      "data_field": "asset_value"
     },
     {
       "fieldname": "exposure",
@@ -81,31 +117,7 @@
       "default_label": false,
       "span": 12,
       "display_on_frontend": false,
-      "hidden": true,
       "defaultValue": "Internal"
-    },
-    {
-      "fieldname": "department",
-      "fieldtype": "Select",
-      "label": "Department",
-      "options": ["Finance", "IT", "HR", "Operations", "Legal", "SOC Team"],
-      "display_on_frontend": false,
-      "span": 12,
-      "hidden": true,
-      "required": false
-    },
-    {
-      "fieldname": "ip_hostname",
-      "fieldtype": "Data",
-      "label": "IP/Hostname",
-      "display_on_frontend": false,
-      "required": false,
-      "span": 12,
-      "default_label": false,
-      "hidden": true,
-      "validation": {
-        "regex": "^(([0-9]{1,3}\\.){3}[0-9]{1,3}|[a-zA-Z0-9\\-]+(\\.[a-zA-Z0-9\\-]+)+)$"
-      }
     },
     {
       "fieldname": "asset_information",
@@ -114,7 +126,8 @@
       "span": 12,
       "default_label": false,
       "display_on_frontend": false,
-      "required": false
+      "required": false,
+      "hidden": true
     },
     {
       "fieldname": "process_name",
@@ -123,7 +136,8 @@
       "span": 12,
       "default_label": false,
       "display_on_frontend": false,
-      "required": false
+      "required": false,
+      "hidden": true
     },
     {
       "fieldname": "owner",
@@ -135,8 +149,9 @@
       "relationship_type":"owns",
       "span": 12,
       "default_label": false,
-      "display_on_frontend": true,
-      "required": false
+      "display_on_frontend": false,
+      "required": false,
+      "hidden": true
     },
     {
       "fieldname": "contains_sensitive_data",
@@ -146,7 +161,6 @@
       "display_on_frontend": false,
       "required": false,
       "span": 12,
-      "hidden": true,
       "default": "Yes"
     },
     {
@@ -156,7 +170,6 @@
       "options": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
       "display_on_frontend": false,
       "required": false,
-      "hidden": true,
       "span": 12
     },
     {
@@ -166,7 +179,6 @@
       "options": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
       "display_on_frontend": false,
       "required": false,
-      "hidden": true,
       "span": 12
     },
     {
@@ -176,7 +188,6 @@
       "options": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
       "display_on_frontend": false,
       "required": false,
-      "hidden": true,
       "span": 12
     },
     {
@@ -194,7 +205,8 @@
       "label": "Operating Unit / Function",
       "display_on_frontend": false,
       "required": false,
-      "span": 12
+      "span": 12,
+      "hidden": true
     },
     {
       "fieldname": "location",
@@ -202,7 +214,8 @@
       "label": "Location",
       "display_on_frontend": false,
       "required": false,
-      "span": 12
+      "span": 12,
+      "hidden": true
     },
     {
       "fieldname": "remarks",
@@ -210,7 +223,8 @@
       "label": "Remarks",
       "display_on_frontend": false,
       "required": false,
-      "span": 12
+      "span": 12,
+      "hidden": true
     },
 
     {
@@ -218,10 +232,9 @@
       "fieldtype": "MultiLink",
       "label": "Security Controls Categories Present",
       "link_to": "control",
-      "target_field":"control_name",
+      "target_field":"control_id",
       "relationship_type": "HAS_CONTROL",
       "relation_direction": "outgoing",
-      "hidden": true,
       "display_on_frontend": false,
       "required": false,
       "span": 12
