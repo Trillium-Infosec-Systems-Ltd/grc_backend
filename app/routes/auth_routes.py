@@ -179,7 +179,7 @@ async def get_user_by_id(
     relationship = dict(relationship["target_node"]) if relationship and relationship["target_label"][0] == "organization" else {}
 
     # Step 2: Authorization check
-    creator_role = current_user.get("role")f
+    creator_role = current_user.get("role")
     creator_user_id = current_user.get("id")
     creator_org_id = current_user.get("org_id")
 
@@ -223,7 +223,7 @@ async def get_users(
             "total": total,
             "skip": skip,
             "limit": limit,
-            "items": users
+            "users": users
         }
 
     # Step 2: Partner - users within their org
