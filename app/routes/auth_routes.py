@@ -223,7 +223,7 @@ async def get_users(
             "total": total,
             "skip": skip,
             "limit": limit,
-            "users": users
+            "items": users
         }
 
     # Step 2: Partner - users within their org
