@@ -3,13 +3,16 @@ import os, json
 from services.database import get_db
 from services.db_CRUD import GenericCRUD
 from neo4j import AsyncSession  # or from your actual Neo4j async client
+from routes.auth_routes import get_user_by_id
+from fastapi import Request# adjust path as needed
+from services.dependencies import get_current_user
 
 router = APIRouter()
 
 SCHEMA_DIR = os.path.join(os.path.dirname(__file__), "..", "schemas")
 @router.get("/schemas/{schema_name}/{doc_id}")
 @router.get("/schemas/{schema_name}")
-async def get_schema(schema_name: str, doc_id: str = None, db: AsyncSession = Depends(get_db)):
+async def get_schema(schema_name: str, doc_id: str = None, db: AsyncSession = Depends(get_db),request: Request = None,):
     file_path = os.path.join(SCHEMA_DIR, f"{schema_name}.json")
 
     if not os.path.exists(file_path):
@@ -27,12 +30,26 @@ async def get_schema(schema_name: str, doc_id: str = None, db: AsyncSession = De
 
     # If doc_id is provided, get the actual document data
     if doc_id:
-        crud = GenericCRUD(db, schema_name)
-        document = await crud.get_by_id(doc_id)
+        if schema_name == "users":
+            # ✅ Extract token from request headers
+            auth_header = request.headers.get("authorization")
+            if not auth_header:
+                raise HTTPException(status_code=401, detail="Authorization header missing")
+
+            token = auth_header.split(" ")[1]
+            current_user = await get_current_user(token)
+
+            user_response = await get_user_by_id(user_id=doc_id, session=db, current_user=current_user)
+            user_data = user_response["user"]
+            relationships = user_response["relationships"]
+            document = {"node": user_data,"relationships":relationships}
+        else:
+            crud = GenericCRUD(db, schema_name)
+            document = await crud.get_by_id(doc_id)
 
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
-
+        # import pdb;pdb.set_trace()
         doc_node = document.get("node", {})
         relationships = document.get("relationships", [])
         doc_data = dict(doc_node)

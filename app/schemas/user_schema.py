@@ -16,11 +16,14 @@ class UserUpdate(BaseModel):
     org_id: Optional[str] = None
 
 class UserLogin(BaseModel):
-    email: EmailStr
+    email: str
     password: str
-
+    remember_me: bool = False
 class UserOut(BaseModel):
     id: str
     email: EmailStr
     role: str
     org_id: Optional[str] = None
+    
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str

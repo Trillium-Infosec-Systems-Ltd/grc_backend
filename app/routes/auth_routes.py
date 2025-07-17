@@ -4,9 +4,10 @@ from uuid import uuid4
 from neo4j import AsyncSession
 from services.database import get_db
 from services.dependencies import get_current_user
-
-from schemas.user_schema import UserCreate, UserLogin,UserUpdate
-from services.auth_service import hash_password, verify_password, create_access_token
+from fastapi import Body
+from fastapi import Query
+from schemas.user_schema import UserCreate, UserLogin,UserUpdate,RefreshTokenRequest
+from services.auth_service import hash_password, verify_password, create_access_token,create_refresh_token,decode_token
 
 # router = APIRouter(prefix="/auth", tags=["Auth"])
 router = APIRouter()
@@ -69,7 +70,7 @@ async def register(user: UserCreate,  session: AsyncSession = Depends(get_db), c
     # Step 4: Create relation from User → Organization
     relation_query = """
     MATCH (u:User {id: $user_id})
-    MATCH (o:Organization {id: $org_id})
+    MATCH (o:organization {id: $org_id})
     MERGE (u)-[:ASSOCIATE_WITH]->(o)
     """
     await session.run(relation_query, user_id=user_id, org_id=user.org_id)
@@ -144,46 +145,130 @@ async def update_user(user_id: str, user: UserUpdate, session: AsyncSession = De
     return {"msg": "User updated successfully", "id": user_id}
 
 
-@router.get("/users")
-async def get_users(session: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
+@router.get("/users/{user_id}")
+async def get_user_by_id(
+    user_id: str,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    # Step 1: Check if user exists
+    query = """
+    MATCH (u:User {id: $user_id})
+    OPTIONAL MATCH (u)-[r]->(n)
+    RETURN u, collect(
+        CASE 
+            WHEN r IS NOT NULL AND n IS NOT NULL THEN {
+                type: type(r),
+                properties: properties(r),
+                target_label: labels(n),
+                target_node: n
+            }
+        END
+    ) AS relationships
+    """
+    result = await session.run(query, user_id=user_id)
+    record = await result.single()
+    # 
+
+    if not record:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target_user = record["u"]
+    relationship = record["relationships"][0] if record["relationships"] else None
+
+    relationship = dict(relationship["target_node"]) if relationship and relationship["target_label"][0] == "organization" else {}
+
+    # Step 2: Authorization check
     creator_role = current_user.get("role")
     creator_user_id = current_user.get("id")
     creator_org_id = current_user.get("org_id")
 
-    # Step 1: Super Admin - can view all users
+    # Regular user can only view their own data
+    if creator_role == "user" and user_id != creator_user_id:
+        raise HTTPException(status_code=403, detail="You cannot view other users")
+
+    # Partner can only view users in their organization
+    if creator_role == "partner" and target_user.get("org_id") != creator_org_id:
+        raise HTTPException(status_code=403, detail="You can only view users within your organization")
+
+    return {"user": target_user,"relationships" : relationship}
+
+
+@router.get("/users")
+async def get_users(
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100)
+):
+    creator_role = current_user.get("role")
+    creator_user_id = current_user.get("id")
+    creator_org_id = current_user.get("org_id")
+
+    # Step 1: Super Admin - view all users
     if creator_role == "super_admin":
-        query = "MATCH (u:User) RETURN u"
-        result = await session.run(query)
-        users = [record["u"] for record in await result.data()]  # Use .data() to get results
-        return {"users": users}
+        total_query = "MATCH (u:User) RETURN count(u) AS total"
+        result_total = await session.run(total_query)
+        total = (await result_total.single())["total"]
 
-    # Step 2: Partner - can view users within their organization
-    if creator_role == "partner":
-        query = """
-        MATCH (u:User)-[:ASSOCIATE_WITH]->(o:Organization {id: $org_id})
+        paginated_query = """
+        MATCH (u:User)
         RETURN u
+        SKIP $skip LIMIT $limit
         """
-        result = await session.run(query, org_id=creator_org_id)
-        users = [record["u"] for record in await result.data()]  # Use .data() to get results
-        return {"users": users}
+        result = await session.run(paginated_query, skip=skip, limit=limit)
+        users = [record["u"] for record in await result.data()]
 
-    # Step 3: Regular User - can only view themselves
+        return {
+            "total": total,
+            "skip": skip,
+            "limit": limit,
+            "users": users
+        }
+
+    # Step 2: Partner - users within their org
+    if creator_role == "partner":
+        total_query = """
+        MATCH (u:User)-[:ASSOCIATE_WITH]->(o:organization {id: $org_id})
+        RETURN count(u) AS total
+        """
+        result_total = await session.run(total_query, org_id=creator_org_id)
+        total = (await result_total.single())["total"]
+
+        paginated_query = """
+        MATCH (u:User)-[:ASSOCIATE_WITH]->(o:organization {id: $org_id})
+        RETURN u
+        SKIP $skip LIMIT $limit
+        """
+        result = await session.run(paginated_query, org_id=creator_org_id, skip=skip, limit=limit)
+        users = [record["u"] for record in await result.data()]
+
+        return {
+            "total": total,
+            "skip": skip,
+            "limit": limit,
+            "users": users
+        }
+
+    # Step 3: Regular user - can only view themselves
     if creator_role == "user":
         query = "MATCH (u:User {id: $user_id}) RETURN u"
         result = await session.run(query, user_id=creator_user_id)
         user = await result.single()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        return {"user": user["u"]}
-    
+        return {
+            "total": 1,
+            "skip": 0,
+            "limit": 1,
+            "users": [user["u"]]
+        }
+
     raise HTTPException(status_code=403, detail="Unauthorized to view users")
 
 
-    # Step 3: Regular User - can only view thems
 
-
-
-
+# =============================LOG in APIs with access and resfresh token ==========================================================
 
 @router.post("/login")
 async def login(user: UserLogin, session: AsyncSession = Depends(get_db)):
@@ -199,11 +284,33 @@ async def login(user: UserLogin, session: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token_data = {
-        "user_id": db_user["id"],
+        "sub": db_user["id"],
         "email": db_user["email"],
         "role": db_user["role"],
         "org_id": db_user.get("org_id")
     }
 
     access_token = create_access_token(token_data)
-    return {"access_token": access_token, "token_type": "bearer"}
+    refresh_token = create_refresh_token(token_data, remember_me=user.remember_me)
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer"
+    }
+    
+    
+@router.post("/refresh")
+async def refresh_token(body: RefreshTokenRequest):
+    payload = decode_token(body.refresh_token)
+
+    if not payload or payload.get("type") != "refresh":
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    new_access_token = create_access_token({
+        "sub": payload["sub"],
+        "email": payload["email"],
+        "role": payload["role"]
+    })
+
+    return {"access_token": new_access_token, "token_type": "bearer"}
