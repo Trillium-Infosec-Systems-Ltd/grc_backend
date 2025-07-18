@@ -22,6 +22,7 @@ from datetime import datetime
 import os
 import uuid
 from typing import List
+import pandas as pd
 
 
 
@@ -43,6 +44,8 @@ async def get_link_options(
 
     try:
         schema = load_schema(document_type)
+
+            
         schema_fields = {f["fieldname"] for f in schema.get("fields", [])}
 
         # Parse fields and search terms
@@ -336,3 +339,94 @@ async def get_threat_info(threat_id: str,asset_value: str = Query(...), db: Asyn
         "ease_of_exploitation": ease_of_exploitation,
         "risk": risk
     }
+    
+    
+    
+    
+@router.post("/bulk_upload/{doctype}")
+async def bulk_upload_nodes(
+    doctype: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        contents = await file.read()
+
+        # Parse file
+        if file.filename.endswith(".csv"):
+            df = pd.read_csv(io.BytesIO(contents))
+        elif file.filename.endswith(".xlsx"):
+            df = pd.read_excel(io.BytesIO(contents))
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file format")
+
+        schema = load_schema(doctype)
+        field_map = {f["label"]: f["fieldname"] for f in schema["fields"]}
+        required_fields = [f["fieldname"] for f in schema["fields"] if f.get("required")]
+
+        crud = GenericCRUD(db, doctype)
+
+        created = []
+        errors = []
+
+        for index, row in df.iterrows():
+            try:
+                # Step 1: Map label -> fieldname
+                data = {field_map.get(k, k): v for k, v in row.items() if k in field_map}
+
+                # Step 2: Handle Link / MultiLink
+                for field in schema["fields"]:
+                    fname = field.get("fieldname")
+                    if fname not in data:
+                        continue
+
+                    if field.get("fieldtype") == "Link":
+                        label = data[fname]
+                        if label:
+                            query = f"""
+                                MATCH (n:{field['link_to']})
+                                WHERE toLower(n.{field.get("target_field", "name")}) = toLower($label)
+                                RETURN n.id AS id
+                            """
+                            result = await db.run(query, label=label)
+                            match = await result.single()
+                            if match:
+                                data[fname] = match["id"]
+                            else:
+                                raise ValueError(f"No {field['link_to']} found for '{label}'")
+
+                    elif field.get("fieldtype") == "MultiLink":
+                        labels = [l.strip() for l in str(data[fname]).split(",") if l.strip()]
+                        ids = []
+                        for label in labels:
+                            query = f"""
+                                MATCH (n:{field['link_to']})
+                                WHERE toLower(n.{field.get("target_field", "name")}) = toLower($label)
+                                RETURN n.id AS id
+                            """
+                            result = await db.run(query, label=label)
+                            match = await result.single()
+                            if match:
+                                ids.append(match["id"])
+                        data[fname] = ids
+
+                # Step 3: Validate required fields
+                for field in required_fields:
+                    if not data.get(field):
+                        raise ValueError(f"Missing required field: {field}")
+
+                # Step 4: Create node
+                result = await crud.create(data)
+                created.append(result["id"])
+            except Exception as e:
+                errors.append({"row": index + 2, "error": str(e)})
+
+        return {
+            "created_count": len(created),
+            "failed_count": len(errors),
+            "created_ids": created,
+            "errors": errors
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process file: {str(e)}")

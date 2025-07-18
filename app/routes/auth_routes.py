@@ -36,14 +36,14 @@ async def register(user: UserCreate,  session: AsyncSession = Depends(get_db), c
 
     
     
-    check_query = "MATCH (u:User {email: $email}) RETURN u"
+    check_query = "MATCH (u:users {email: $email}) RETURN u"
     result = await session.run(check_query, email=user.email)
     if await result.single():
         raise HTTPException(status_code=400, detail="User already exists")
 
     # Step 2: Generate user ID using Counter
     counter_query = """
-    MERGE (c:Counter {doctype: 'User'})
+    MERGE (c:Counter {doctype: 'users'})
     ON CREATE SET c.current = 1
     ON MATCH SET c.current = c.current + 1
     RETURN c.current AS new_id
@@ -51,36 +51,37 @@ async def register(user: UserCreate,  session: AsyncSession = Depends(get_db), c
     counter_result = await session.run(counter_query)
     counter_record = await counter_result.single()
     new_id = counter_record["new_id"]
-    user_id = f"user-{new_id}"
+    user_id = f"users-{new_id}"
 
     # Step 3: Create User node
     create_user_query = """
-    CREATE (u:User {
+    CREATE (u:users {
         id: $id,
+        name:$name,
         email: $email,
         password: $password,
         role: $role,
         org_id: $org_id
     }) RETURN u
     """
-    await session.run(create_user_query, id=user_id, email=user.email,
+    await session.run(create_user_query, id=user_id,name = user.name,email=user.email,
                       password=hash_password(user.password),
                       role=user.role, org_id=user.org_id)
 
     # Step 4: Create relation from User → Organization
     relation_query = """
-    MATCH (u:User {id: $user_id})
+    MATCH (u:users {id: $user_id})
     MATCH (o:organization {id: $org_id})
     MERGE (u)-[:ASSOCIATE_WITH]->(o)
     """
     await session.run(relation_query, user_id=user_id, org_id=user.org_id)
 
-    return {"msg": "User registered successfully", "id": user_id}
+    return {"msg": "users registered successfully", "id": user_id}
 
 @router.put("/users/{user_id}")
 async def update_user(user_id: str, user: UserUpdate, session: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
     # Step 1: Check if the user exists
-    check_query = "MATCH (u:User {id: $user_id}) RETURN u"
+    check_query = "MATCH (u:users {id: $user_id}) RETURN u"
     result = await session.run(check_query, user_id=user_id)
     existing_user = await result.single()
     
@@ -115,7 +116,7 @@ async def update_user(user_id: str, user: UserUpdate, session: AsyncSession = De
         raise HTTPException(status_code=400, detail="No valid fields provided to update")
 
     update_query = """
-    MATCH (u:User {id: $user_id})
+    MATCH (u:users {id: $user_id})
     SET u.email = COALESCE($email, u.email),
         u.password = COALESCE($password, u.password),
         u.role = COALESCE($role, u.role),
@@ -129,14 +130,14 @@ async def update_user(user_id: str, user: UserUpdate, session: AsyncSession = De
     if "org_id" in update_fields:
         # First, remove the old relationship
         remove_relation_query = """
-        MATCH (u:User {id: $user_id})-[r:ASSOCIATE_WITH]->(o:Organization)
+        MATCH (u:users {id: $user_id})-[r:ASSOCIATE_WITH]->(o:Organization)
         DELETE r
         """
         await session.run(remove_relation_query, user_id=user_id)
 
         # Then, create the new relationship
         add_relation_query = """
-        MATCH (u:User {id: $user_id})
+        MATCH (u:users {id: $user_id})
         MATCH (o:Organization {id: $org_id})
         MERGE (u)-[:ASSOCIATE_WITH]->(o)
         """
@@ -153,7 +154,7 @@ async def get_user_by_id(
 ):
     # Step 1: Check if user exists
     query = """
-    MATCH (u:User {id: $user_id})
+    MATCH (u:users {id: $user_id})
     OPTIONAL MATCH (u)-[r]->(n)
     RETURN u, collect(
         CASE 
@@ -201,22 +202,27 @@ async def get_users(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100)
 ):
+    # import pdb;pdb.set_trace()
     creator_role = current_user.get("role")
     creator_user_id = current_user.get("id")
+    print("======================",creator_user_id)
     creator_org_id = current_user.get("org_id")
 
     # Step 1: Super Admin - view all users
     if creator_role == "super_admin":
-        total_query = "MATCH (u:User) RETURN count(u) AS total"
-        result_total = await session.run(total_query)
+        total_query = """MATCH (u:users) 
+        WHERE u.id <> $creator_user_id
+        RETURN count(u) AS total"""
+        result_total = await session.run(total_query,creator_user_id=creator_user_id)
         total = (await result_total.single())["total"]
 
         paginated_query = """
-        MATCH (u:User)
+        MATCH (u:users)
+        WHERE u.id <> $creator_user_id
         RETURN u
         SKIP $skip LIMIT $limit
         """
-        result = await session.run(paginated_query, skip=skip, limit=limit)
+        result = await session.run(paginated_query,creator_user_id=creator_user_id, skip=skip, limit=limit)
         users = [record["u"] for record in await result.data()]
 
         return {
@@ -229,18 +235,21 @@ async def get_users(
     # Step 2: Partner - users within their org
     if creator_role == "partner":
         total_query = """
-        MATCH (u:User)-[:ASSOCIATE_WITH]->(o:organization {id: $org_id})
+        MATCH (u:users)-[:ASSOCIATE_WITH]->(o:organization {id: $org_id})
+        WHERE u.id <> $creator_user_id
         RETURN count(u) AS total
         """
-        result_total = await session.run(total_query, org_id=creator_org_id)
+        result_total = await session.run(total_query, org_id=creator_org_id,creator_user_id=creator_user_id)
         total = (await result_total.single())["total"]
 
         paginated_query = """
-        MATCH (u:User)-[:ASSOCIATE_WITH]->(o:organization {id: $org_id})
+        MATCH (u:users)-[:ASSOCIATE_WITH]->(o:organization {id: $org_id})
+
+        WHERE u.id <> $creator_user_id
         RETURN u
         SKIP $skip LIMIT $limit
         """
-        result = await session.run(paginated_query, org_id=creator_org_id, skip=skip, limit=limit)
+        result = await session.run(paginated_query, org_id=creator_org_id,creator_user_id=creator_user_id, skip=skip, limit=limit)
         users = [record["u"] for record in await result.data()]
 
         return {
@@ -252,8 +261,10 @@ async def get_users(
 
     # Step 3: Regular user - can only view themselves
     if creator_role == "user":
-        query = "MATCH (u:User {id: $user_id}) RETURN u"
-        result = await session.run(query, user_id=creator_user_id)
+        query = """MATCH (u:users {id: $user_id}) 
+        WHERE u.id <> $creator_user_id
+        RETURN u"""
+        result = await session.run(query, user_id=creator_user_id,creator_user_id=creator_user_id)
         user = await result.single()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
@@ -272,7 +283,7 @@ async def get_users(
 
 @router.post("/login")
 async def login(user: UserLogin, session: AsyncSession = Depends(get_db)):
-    query = "MATCH (u:User {email: $email}) RETURN u"
+    query = "MATCH (u:users {email: $email}) RETURN u"
     result = await session.run(query, email=user.email)
     record = await result.single()
 
@@ -284,9 +295,10 @@ async def login(user: UserLogin, session: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token_data = {
-        "sub": db_user["id"],
+        "id": db_user["id"],
         "email": db_user["email"],
         "role": db_user["role"],
+        "name":db_user.get("name"),
         "org_id": db_user.get("org_id")
     }
 

@@ -244,6 +244,7 @@ class GenericCRUD:
                         matched_nodes.append(rel["node"])
 
                 if fieldtype == "Link":
+                    # import pdb;pdb.set_trace()
                     node[fieldname] = matched_nodes[0].get(target_field) if matched_nodes else None
                 elif fieldtype == "MultiLink":
                     node[fieldname] = ", ".join([n.get(target_field) for n in matched_nodes if target_field in n])
