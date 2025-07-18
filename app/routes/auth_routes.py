@@ -208,7 +208,7 @@ async def get_users(
     print("======================",creator_user_id)
     creator_org_id = current_user.get("org_id")
 
-    # Step 1: Super Admin - view all users
+    # Step 1: Super Admin - view all usersf
     if creator_role == "super_admin":
         total_query = """MATCH (u:users) 
         WHERE u.id <> $creator_user_id

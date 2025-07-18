@@ -117,6 +117,7 @@ async def get_schema(schema_name: str, doc_id: str = None, db: AsyncSession = De
 
     # Inject default values into schema
     for field in schema.get("fields", []):
+        # import pdb;pdb.set_trace()
         fieldname = field.get("fieldname")
         if fieldname == "control_assessment":
             field["default_value"] = questions
