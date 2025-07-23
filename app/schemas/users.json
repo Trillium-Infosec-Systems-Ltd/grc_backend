@@ -16,6 +16,19 @@
         }
       },
       {
+        "fieldname": "username",
+        "fieldtype": "Data",
+        "label": "User Name",
+        "default_label": true,
+        "display_on_frontend":true,
+        "required": true,
+        "span" :12,
+        "validation": {
+          "min_length": 3,
+          "max_length": 100
+        }
+      },
+      {
         "fieldname": "email",
         "fieldtype": "Data",
         "label": "Email",
@@ -38,9 +51,9 @@
 
       {
         "fieldname": "password",
-        "fieldtype": "Data",
+        "fieldtype": "Password",
         "label": "Password",
-        "display_on_frontend":true,
+        "display_on_frontend":false,
         "span" :12,
         "required": true
       },
@@ -53,8 +66,81 @@
         "relationship_type": "ASSOCIATE_WITH",
         "relationship_direction": "outgoing",
         "display_on_frontend":true,
-        "span" :24,
+        "span" :12,
         "required": true
+      },
+      {
+      "fieldname": "date_of_birth",
+      "fieldtype": "Date",
+      "label": "Date of Birth",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": true
+    },
+    {
+        "fieldname": "present_address",
+        "fieldtype": "Data",
+        "label": "Present Address",
+        "default_label": true,
+        "display_on_frontend":false,
+        "required": true,
+        "span" :12,
+        "validation": {
+          "min_length": 3,
+          "max_length": 100
+        }
+      },
+    {
+        "fieldname": "permanent_address",
+        "fieldtype": "Data",
+        "label": "Permanent Address",
+        "default_label": true,
+        "display_on_frontend":false,
+        "required": true,
+        "span" :12,
+        "validation": {
+          "min_length": 3,
+          "max_length": 100
+        }
+      },
+    {
+        "fieldname": "city",
+        "fieldtype": "Data",
+        "label": "City",
+        "default_label": true,
+        "display_on_frontend":false,
+        "required": true,
+        "span" :12,
+        "validation": {
+          "min_length": 3,
+          "max_length": 100
+        }
+      },
+    {
+        "fieldname": "postal_code",
+        "fieldtype": "Data",
+        "label": "Postal Code",
+        "default_label": true,
+        "display_on_frontend":false,
+        "required": true,
+        "span" :12,
+        "validation": {
+          "min_length": 3,
+          "max_length": 100
+        }
+      },
+    {
+        "fieldname": "country",
+        "fieldtype": "Data",
+        "label": "Country",
+        "default_label": true,
+        "display_on_frontend":false,
+        "required": true,
+        "span" :12,
+        "validation": {
+          "min_length": 3,
+          "max_length": 100
+        }
       },
 
       {
