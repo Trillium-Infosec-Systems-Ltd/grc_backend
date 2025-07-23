@@ -308,6 +308,9 @@ async def login(user: UserLogin, session: AsyncSession = Depends(get_db)):
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
+        "role":token_data["role"],
+        "name":token_data["name"],
+        "org_id":token_data["org_id"],
         "token_type": "bearer"
     }
     
