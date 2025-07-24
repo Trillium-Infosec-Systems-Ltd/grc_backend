@@ -139,20 +139,7 @@
       "required": false,
       "hidden": true
     },
-    {
-      "fieldname": "owner",
-      "fieldtype": "Link",
-      "label": "Process Owner",
-      "link_to": "users",
-      "target_field":"name",
-      "relationship_direction":"incoming",
-      "relationship_type":"owns",
-      "span": 12,
-      "default_label": false,
-      "display_on_frontend": false,
-      "required": false,
-      "hidden": true
-    },
+
     {
       "fieldname": "contains_sensitive_data",
       "fieldtype": "Radio",

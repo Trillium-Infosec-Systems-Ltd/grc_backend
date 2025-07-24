@@ -343,6 +343,149 @@ async def get_threat_info(threat_id: str,asset_value: str = Query(...), db: Asyn
     
     
     
+# @router.post("/bulk_upload/{doctype}")
+# async def bulk_upload_nodes(
+#     doctype: str,
+#     file: UploadFile = File(...),
+#     db: AsyncSession = Depends(get_db)
+# ):
+#     try:
+#         contents = await file.read()
+
+#         # Parse file
+#         if file.filename.endswith(".csv"):
+#             df = pd.read_csv(io.BytesIO(contents))
+#         elif file.filename.endswith(".xlsx"):
+#             df = pd.read_excel(io.BytesIO(contents))
+#         else:
+#             raise HTTPException(status_code=400, detail="Unsupported file format")
+
+#         schema = load_schema(doctype)
+#         field_map = {f["label"]: f["fieldname"] for f in schema["fields"]}
+#         required_fields = [f["fieldname"] for f in schema["fields"] if f.get("required")]
+#         linked_fields = [f["fieldname"] for f in schema["fields"] if f.get("fieldtype") in ["Link", "MultiLink"]]
+
+#         crud = GenericCRUD(db, doctype)
+
+#         created = []
+#         errors = []
+     
+
+#         for index, row in df.iterrows():
+#             try:
+#                 # Step 1: Map label -> fieldname
+#                 data = {field_map.get(k, k): v for k, v in row.items() if k in field_map}
+
+#                 # Step 2: Validate required fields
+#                 for field in required_fields:
+#                     if not data.get(field):
+#                         raise ValueError(f"Missing required field: {field}")
+
+#                 # Step 3: Generate ID
+                
+#                 id_query = """
+#                 MERGE (c:Counter {doctype: $doctype})
+#                 ON CREATE SET c.current = 1
+#                 ON MATCH SET c.current = c.current + 1
+#                 RETURN c.current AS new_id
+#                 """
+#                 result = await db.run(id_query, doctype=doctype)
+#                 record = await result.single()
+#                 new_id = record["new_id"]
+#                 data["id"] = f"{doctype.lower()}-{new_id}"
+
+
+#                 now = datetime.utcnow().isoformat()
+#                 data["created_at"] = now
+#                 data["updated_at"] = now
+#                 if field in linked_fields:
+#                     quer = """MATCH (target:{rel["target_doctype"]} {{{field_key}: $val}})                    
+#                     """
+                    
+                    
+                    
+                    
+
+#                 # Save relationships for later creation
+#                 relationships = []
+                
+
+#                 for field in schema["fields"]:
+#                     if field.get("fieldtype") not in ["Link", "MultiLink"]:
+#                         continue
+
+#                     fname = field["fieldname"]
+#                     if fname not in data or not data[fname]:
+#                         continue
+
+#                     target_doctype = field["link_to"]
+#                     relationship_type = field.get("relationship_type", "RELATED_TO").upper()
+#                     direction = field.get("relationship_direction", "outgoing")
+#                     target_field = field.get("target_field","")
+
+#                     values = data[fname]
+#                     if not isinstance(values, list):
+#                         values = [v.strip() for v in str(values).split(",") if v.strip()]
+
+#                     # Store for later relation creation
+#                     relationships.append({
+#                         "fieldname": fname,
+#                         "values": values,
+#                         "target_doctype": target_doctype,
+#                         "relationship_type": relationship_type,
+#                         "direction": direction,
+#                         "target_field":target_field
+#                     })
+
+#                     # Remove from node data to avoid saving as list string
+#                     # del data[fname]
+
+#                 # Step 4: Create node
+                
+                
+#                 create_query = f"""
+#                 CREATE (n:{doctype} $data)
+#                 RETURN n
+#                 """
+#                 result = await db.run(create_query, data=data)
+#                 record = await result.single()
+#                 node = record["n"]
+
+#                 # Step 5: Create relationships
+#                 for rel in relationships:
+#                     # import pdb;pdb.set_trace()
+#                     field_key =rel["target_field"]
+                    
+#                     for val in rel["values"]:
+#                         if rel["direction"] == "incoming":
+#                             relation_query = f"""
+#                             MATCH (target:{rel["target_doctype"]} {{{field_key}: $val}})
+#                             MATCH (source:{doctype} {{id: $source_id}})
+#                             MERGE (target)-[:{rel["relationship_type"]}]->(source)
+#                             """
+#                         else:
+#                             relation_query = f"""
+#                             MATCH (target:{rel["target_doctype"]} {{{field_key}: $val}})
+#                             MATCH (source:{doctype} {{id: $source_id}})
+#                             MERGE (source)-[:{rel["relationship_type"]}]->(target)
+#                             """
+#                         await db.run(relation_query, val=val, source_id=data["id"])
+
+#                 created.append(data["id"])
+
+#             except Exception as e:
+#                 errors.append({"row": index + 2, "error": str(e)})
+
+#         return {
+#             "created_count": len(created),
+#             "failed_count": len(errors),
+#             "created_ids": created,
+#             "errors": errors
+#         }
+
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Failed to process file: {str(e)}")
+
 @router.post("/bulk_upload/{doctype}")
 async def bulk_upload_nodes(
     doctype: str,
@@ -363,8 +506,9 @@ async def bulk_upload_nodes(
         schema = load_schema(doctype)
         field_map = {f["label"]: f["fieldname"] for f in schema["fields"]}
         required_fields = [f["fieldname"] for f in schema["fields"] if f.get("required")]
-
-        crud = GenericCRUD(db, doctype)
+        linked_fields = [f["fieldname"] for f in schema["fields"] if f.get("fieldtype") in ["Link", "MultiLink"]]
+        
+        print("----------------",linked_fields)
 
         created = []
         errors = []
@@ -373,6 +517,9 @@ async def bulk_upload_nodes(
             try:
                 # Step 1: Map label -> fieldname
                 data = {field_map.get(k, k): v for k, v in row.items() if k in field_map}
+                
+                print(data)
+
 
                 # Step 2: Validate required fields
                 for field in required_fields:
@@ -394,6 +541,36 @@ async def bulk_upload_nodes(
                 now = datetime.utcnow().isoformat()
                 data["created_at"] = now
                 data["updated_at"] = now
+                
+
+                # Step 3.5: Resolve linked fields to IDs
+                for field in schema["fields"]:
+                    if field.get("fieldtype") not in ["Link", "MultiLink"]:
+                        continue
+                    fname = field["fieldname"]
+                    if fname not in data or not data[fname]:
+                        continue
+                    target_doctype = field["link_to"]
+                    target_field = field.get("target_field", "id")  # default fallback
+                    raw_values = data[fname]
+                    if not isinstance(raw_values, list):
+                        raw_values = [v.strip() for v in str(raw_values).split(",") if v.strip()]
+
+
+                    resolved_ids = []
+
+                    for val in raw_values:
+                        match_query = f"""
+                        MATCH (n:{target_doctype} {{{target_field}: $val}})
+                        RETURN n.id AS id
+                        """
+                        result = await db.run(match_query, val=val)
+                        record = await result.single()
+                        if not record:
+                            raise ValueError(f"{target_doctype} not found where {target_field} = '{val}'")
+                        resolved_ids.append(record["id"])
+
+                    data[fname] = resolved_ids[0] if field["fieldtype"] == "Link" else resolved_ids
 
                 # Save relationships for later creation
                 relationships = []
@@ -405,28 +582,23 @@ async def bulk_upload_nodes(
                     fname = field["fieldname"]
                     if fname not in data or not data[fname]:
                         continue
-
                     target_doctype = field["link_to"]
                     relationship_type = field.get("relationship_type", "RELATED_TO").upper()
                     direction = field.get("relationship_direction", "outgoing")
-                    target_field = field.get("target_field","")
+                    target_field = "id"  # after resolving, we use ID
 
                     values = data[fname]
                     if not isinstance(values, list):
-                        values = [v.strip() for v in str(values).split(",") if v.strip()]
+                        values = [values]
 
-                    # Store for later relation creation
                     relationships.append({
                         "fieldname": fname,
                         "values": values,
                         "target_doctype": target_doctype,
                         "relationship_type": relationship_type,
                         "direction": direction,
-                        "target_field":target_field
+                        "target_field": target_field
                     })
-
-                    # Remove from node data to avoid saving as list string
-                    # del data[fname]
 
                 # Step 4: Create node
                 create_query = f"""
@@ -439,19 +611,16 @@ async def bulk_upload_nodes(
 
                 # Step 5: Create relationships
                 for rel in relationships:
-                    # import pdb;pdb.set_trace()
-                    field_key =rel["target_field"]
-                    
                     for val in rel["values"]:
                         if rel["direction"] == "incoming":
                             relation_query = f"""
-                             MATCH (target:{rel["target_doctype"]} {{{field_key}: $val}})
+                            MATCH (target:{rel["target_doctype"]} {{id: $val}})
                             MATCH (source:{doctype} {{id: $source_id}})
                             MERGE (target)-[:{rel["relationship_type"]}]->(source)
                             """
                         else:
                             relation_query = f"""
-                            MATCH (target:{rel["target_doctype"]} {{{field_key}: $val}})
+                            MATCH (target:{rel["target_doctype"]} {{id: $val}})
                             MATCH (source:{doctype} {{id: $source_id}})
                             MERGE (source)-[:{rel["relationship_type"]}]->(target)
                             """
