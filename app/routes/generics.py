@@ -640,3 +640,70 @@ async def bulk_upload_nodes(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to process file: {str(e)}")
+
+
+
+async def compute_threat_info(threat_id: str, asset_value: str, db: AsyncSession = Depends(get_db)):
+    crud = GenericCRUD(db, "threat")
+    data = await crud.get_by_id(threat_id)
+
+    if not data:
+        raise HTTPException(status_code=404, detail="Threat not found")
+
+    node = data.get("node", {})
+    relationships = data.get("relationships", [])
+
+    threat_name = node.get("threat_name")
+    likelihood = node.get("likelihood")
+    
+    vulnerabilities = None
+    control_name = None
+    control_rating = None
+
+    for rel in relationships:
+        if rel["type"] == "CAUSES_THREAT":
+            vuln = rel["node"]
+            vulnerabilities = vuln.get("vulnerability_name")
+        elif rel["type"] == "MITIGATES":
+            ctrl = rel["node"]
+            control_name = ctrl.get("control_id")
+            control_rating = ctrl.get("rating")
+
+    ease_map = {
+        "High": "Low",
+        "Medium": "Medium",
+        "Low": "High"
+    }
+    ease_of_exploitation = ease_map.get(str(control_rating).strip(), "Unknown")
+
+    RISK_MATRIX = {
+        "Low": {
+            "Low":   {"Low": "Low", "Medium": "Low", "High": "Medium"},
+            "Medium": {"Low": "Low", "Medium": "Medium", "High": "Medium"},
+            "High": {"Low": "Medium", "Medium": "Medium", "High": "High"},
+        },
+        "Medium": {
+            "Low":   {"Low": "Low", "Medium": "Medium", "High": "Medium"},
+            "Medium": {"Low": "Medium", "Medium": "Medium", "High": "Medium"},
+            "High": {"Low": "Medium", "Medium": "High", "High": "Very High"},
+        },
+        "High": {
+            "Low":   {"Low": "Medium", "Medium": "Medium", "High": "Medium"},
+            "Medium": {"Low": "Medium", "Medium": "Medium", "High": "High"},
+            "High": {"Low": "High", "Medium": "Very High", "High": "Very High"},
+        }
+    }
+
+    try:
+        risk = RISK_MATRIX[likelihood][asset_value][ease_of_exploitation]
+    except KeyError:
+        risk = "Unknown"
+
+    return {
+        "threat_name": threat_name,
+        "likelihood": likelihood,
+        "vulnerabilities": vulnerabilities,
+        "control_id": control_name,
+        "ease_of_exploitation": ease_of_exploitation,
+        "risk": risk
+    }

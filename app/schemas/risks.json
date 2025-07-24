@@ -136,9 +136,9 @@
       "span": 12,
       "display_on_frontend": true,
       "required": true,
-      "isFetchData": true,
-      "depend_on_field": "asset_value",
-      "isFetchingData": true
+      "disabled": true,
+      "depend_on_field": "asset_value"
+
     },
     {
       "fieldname": "threat_probability",
