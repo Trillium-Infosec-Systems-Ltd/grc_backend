@@ -44,7 +44,7 @@
         "fieldtype": "Select",
         "label": "Role",
         "display_on_frontend":true,
-        "options": ["partner", "Employee"],
+        "options": ["partner", "user"],
         "span" :12,
         "required": true
       },

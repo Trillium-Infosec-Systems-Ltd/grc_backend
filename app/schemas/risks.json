@@ -110,6 +110,7 @@
       "disable_on_value": "Name",
       "isFetchingData": true,
       "fetch_to": {
+        "isCall": {"risk_by_asset": "Category"},
         "to": "/data/asset_type",
         "path_params": ["type"]
       }
@@ -137,7 +138,7 @@
       "display_on_frontend": true,
       "required": true,
       "disabled": true,
-      "depend_on_field": "asset_value"
+      "data_field": "threat_id"
 
     },
     {
@@ -148,7 +149,8 @@
       "display_on_frontend": true,
       "span": 12,
       "required": false,
-      "disabled": true
+      "disabled": true,
+      "data_field": "likelihood"
     },
     {
       "fieldname": "related_vulnerabilities",
@@ -159,7 +161,7 @@
       "relationship_type": "has",
       "relationship_direction": "incoming",
       "display_on_frontend": false,
-      "data_field": "vulnerability",
+      "data_field": "vulnerabilities",
       "span": 12,
       "required": false,
       "disabled": true
@@ -174,7 +176,8 @@
       "relationship_direction": "incoming",
       "span": 12,
       "required": false,
-      "disabled": true
+      "disabled": true,
+      "data_field": "security_control_id"
     },
     {
       "fieldname": "ease_of_exploitation",
@@ -184,7 +187,8 @@
 "display_on_frontend": true,
       "span": 12,
       "required": false,
-      "disabled": true
+      "disabled": true,
+      "data_field": "ease_of_exploitation"
     },
     {
       "fieldname": "date_identified",
@@ -203,7 +207,8 @@
       "display_on_frontend": true,
       "span": 12,
       "required": false,
-      "disabled": true
+      "disabled": true,
+      "data_field": "risk"
     },
     {
       "fieldname": "risk_decision",

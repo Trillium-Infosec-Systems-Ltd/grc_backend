@@ -1,6 +1,5 @@
 
-
-from fastapi import APIRouter, Depends, HTTPException, Path, Response,Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Response ,Request
 from fastapi.responses import FileResponse
 from neo4j import AsyncSession
 from services.db_CRUD import GenericCRUD
@@ -33,19 +32,19 @@ router = APIRouter()
 
 @router.get("/link-options")
 async def get_link_options(
-    document_type: str = Query(..., description="Node label to query, e.g. 'User', 'Department'"),
-    field: Optional[str] = Query(None, description="Comma-separated fields like 'name,id'"),
-    search_term: Optional[str] = Query(None, description="Search values, e.g. 'john,123'"),
-    filters: Optional[str] = Query(None, description="JSON string for filtering nodes"),
-    offset: int = Query(0, ge=0),
-    driver: AsyncDriver = Depends(get_db),
+        document_type: str = Query(..., description="Node label to query, e.g. 'User', 'Department'"),
+        field: Optional[str] = Query(None, description="Comma-separated fields like 'name,id'"),
+        search_term: Optional[str] = Query(None, description="Search values, e.g. 'john,123'"),
+        filters: Optional[str] = Query(None, description="JSON string for filtering nodes"),
+        offset: int = Query(0, ge=0),
+        driver: AsyncDriver = Depends(get_db),
 ):
     limit = 20
 
     try:
         schema = load_schema(document_type)
 
-            
+
         schema_fields = {f["fieldname"] for f in schema.get("fields", [])}
 
         # Parse fields and search terms
@@ -82,7 +81,7 @@ async def get_link_options(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
+
 
 @router.get("/table_meta/{doctype}")
 async def get_form_metadata(doctype: str):
@@ -97,10 +96,10 @@ async def get_form_metadata(doctype: str):
     for field in schema.get("fields", []):
         if field.get("display_on_frontend", False):
             column = {
-            "title": field.get("label", field["fieldname"]),
-            "dataIndex": field["fieldname"],
-            "key": field["fieldname"],
-            "fieldType": field["fieldtype"]
+                "title": field.get("label", field["fieldname"]),
+                "dataIndex": field["fieldname"],
+                "key": field["fieldname"],
+                "fieldType": field["fieldtype"]
             }
             if "is_colorful" in field:
                 column["isColorful"] = field["is_colorful"]
@@ -140,7 +139,7 @@ async def generate_csv_template(node_type: str):
 
     except Exception as e:
         return {"error": str(e)}
-    
+
 
 
 
@@ -149,11 +148,11 @@ async def generate_csv_template(node_type: str):
 
 @router.get("/export_csv/{doctype}")
 async def export_csv(
-    doctype: str,
-    request: Request,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(1000, ge=1, le=10000),
-    db: AsyncSession = Depends(get_db)
+        doctype: str,
+        request: Request,
+        skip: int = Query(0, ge=0),
+        limit: int = Query(1000, ge=1, le=10000),
+        db: AsyncSession = Depends(get_db)
 ):
     filters = dict(request.query_params)
     filters.pop("skip", None)
@@ -230,29 +229,57 @@ async def upload_files(files: List[UploadFile] = File(...)):
 
 @router.get("/assets_info/{asset_id}")
 async def get_asset_summary(
-    asset_id: str,
-    db: AsyncSession = Depends(get_db)
+        asset_id: str,
+        db: AsyncSession = Depends(get_db)
 ):
     query = """
     MATCH (a:assets {id: $asset_id})
-    RETURN a.type AS asset_type, a.asset_value AS asset_value
+    OPTIONAL MATCH (a)-[:HAS_CONTROL]->(sc:control)
+    OPTIONAL MATCH (sc)-[:MITIGATES]->(t:threat)
+    WITH a, head(collect(sc)) AS first_control, head(collect(t)) AS first_threat
+    RETURN 
+        a.type AS asset_type, 
+        a.asset_value AS asset_value, 
+        first_control.id AS security_control_id,
+        first_threat.id AS threat_id
     """
+    # first_threat.threat_name AS threat_name
+    # MATCH (a:assets {id: $asset_id})
+    # OPTIONAL MATCH (a)-[:HAS_CONTROL]->(sc:control)
+    # RETURN a.type AS asset_type, a.asset_value AS asset_value, head(collect(sc.id)) AS security_control_id
+    # """
     result = await db.run(query, asset_id=asset_id)
     record = await result.single()
 
     if not record:
         raise HTTPException(status_code=404, detail="Asset not found")
-    
+
     # import pdb;pdb.set_trace()
 
-    return {
-        "asset_type": record["asset_type"],
-        "asset_value": record["asset_value"]
+    calculated_risk = await compute_threat_info(record["threat_id"], record["asset_value"], db)
+
+    response = {
+        "type": record["asset_type"],
+        "asset_value": record["asset_value"],
+        "associated_threats": record["threat_id"],
+        "threat_probability": calculated_risk["likelihood"],
+        "ease_of_exploitation": calculated_risk["ease_of_exploitation"],
+        "related_vulnerabilities": calculated_risk["vulnerabilities"],
+        "control_ids": calculated_risk["control_id"],
+        "residual_risk": calculated_risk["risk"],
     }
+
+    print("+++++++++++++++" ,response)
+
+    return response
+    # return {
+    #     "asset_type": record["asset_type"],
+    #     "asset_value": record["asset_value"]
+    # }
 
 
 @router.get("/threat_info/{threat_id}")
-async def get_threat_info(threat_id: str,asset_value: str = Query(...), db: AsyncSession = Depends(get_db)):
+async def get_threat_info(threat_id: str ,asset_value: str = Query(...), db: AsyncSession = Depends(get_db)):
     crud = GenericCRUD(db, "threat")
     data = await crud.get_by_id(threat_id)
 
@@ -275,23 +302,23 @@ async def get_threat_info(threat_id: str,asset_value: str = Query(...), db: Asyn
 
     #     print('++++++++++++++++++asset value',asset_value)
 
-    
+
 
 
     threat_name = node.get("threat_name")
     likelihood = node.get("likelihood")
-    
-    
+
+
     vulnerabilities = None
     control_name = None
     control_rating = None
 
     for rel in relationships:
-        
-        
+
+
         if rel["type"] == "CAUSES_THREAT":
             vuln = rel["node"]
-             
+
             vulnerabilities = vuln.get("vulnerability_name")
         elif rel["type"] == "MITIGATES":
             ctrl = rel["node"]
@@ -339,10 +366,10 @@ async def get_threat_info(threat_id: str,asset_value: str = Query(...), db: Asyn
         "ease_of_exploitation": ease_of_exploitation,
         "risk": risk
     }
-    
-    
-    
-    
+
+
+
+
 # @router.post("/bulk_upload/{doctype}")
 # async def bulk_upload_nodes(
 #     doctype: str,
@@ -369,7 +396,7 @@ async def get_threat_info(threat_id: str,asset_value: str = Query(...), db: Asyn
 
 #         created = []
 #         errors = []
-     
+
 
 #         for index, row in df.iterrows():
 #             try:
@@ -382,7 +409,7 @@ async def get_threat_info(threat_id: str,asset_value: str = Query(...), db: Asyn
 #                         raise ValueError(f"Missing required field: {field}")
 
 #                 # Step 3: Generate ID
-                
+
 #                 id_query = """
 #                 MERGE (c:Counter {doctype: $doctype})
 #                 ON CREATE SET c.current = 1
@@ -399,16 +426,16 @@ async def get_threat_info(threat_id: str,asset_value: str = Query(...), db: Asyn
 #                 data["created_at"] = now
 #                 data["updated_at"] = now
 #                 if field in linked_fields:
-#                     quer = """MATCH (target:{rel["target_doctype"]} {{{field_key}: $val}})                    
+#                     quer = """MATCH (target:{rel["target_doctype"]} {{{field_key}: $val}})
 #                     """
-                    
-                    
-                    
-                    
+
+
+
+
 
 #                 # Save relationships for later creation
 #                 relationships = []
-                
+
 
 #                 for field in schema["fields"]:
 #                     if field.get("fieldtype") not in ["Link", "MultiLink"]:
@@ -441,8 +468,8 @@ async def get_threat_info(threat_id: str,asset_value: str = Query(...), db: Asyn
 #                     # del data[fname]
 
 #                 # Step 4: Create node
-                
-                
+
+
 #                 create_query = f"""
 #                 CREATE (n:{doctype} $data)
 #                 RETURN n
@@ -455,7 +482,7 @@ async def get_threat_info(threat_id: str,asset_value: str = Query(...), db: Asyn
 #                 for rel in relationships:
 #                     # import pdb;pdb.set_trace()
 #                     field_key =rel["target_field"]
-                    
+
 #                     for val in rel["values"]:
 #                         if rel["direction"] == "incoming":
 #                             relation_query = f"""
@@ -488,9 +515,9 @@ async def get_threat_info(threat_id: str,asset_value: str = Query(...), db: Asyn
 
 @router.post("/bulk_upload/{doctype}")
 async def bulk_upload_nodes(
-    doctype: str,
-    file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db)
+        doctype: str,
+        file: UploadFile = File(...),
+        db: AsyncSession = Depends(get_db)
 ):
     try:
         contents = await file.read()
@@ -507,8 +534,8 @@ async def bulk_upload_nodes(
         field_map = {f["label"]: f["fieldname"] for f in schema["fields"]}
         required_fields = [f["fieldname"] for f in schema["fields"] if f.get("required")]
         linked_fields = [f["fieldname"] for f in schema["fields"] if f.get("fieldtype") in ["Link", "MultiLink"]]
-        
-        print("----------------",linked_fields)
+
+        print("----------------" ,linked_fields)
 
         created = []
         errors = []
@@ -517,7 +544,7 @@ async def bulk_upload_nodes(
             try:
                 # Step 1: Map label -> fieldname
                 data = {field_map.get(k, k): v for k, v in row.items() if k in field_map}
-                
+
                 print(data)
 
 
@@ -672,7 +699,7 @@ async def compute_threat_info(threat_id: str, asset_value: str, db: AsyncSession
 
     threat_name = node.get("threat_name")
     likelihood = node.get("likelihood")
-    
+
     vulnerabilities = None
     control_name = None
     control_rating = None
