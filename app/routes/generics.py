@@ -23,7 +23,7 @@ import os
 import uuid
 from typing import List
 import pandas as pd
-
+from app.services.db_CRUD import GenericCRUD
 
 
 
@@ -541,7 +541,20 @@ async def bulk_upload_nodes(
                 now = datetime.utcnow().isoformat()
                 data["created_at"] = now
                 data["updated_at"] = now
-                
+                for field in schema["fields"]:
+                    if field.get("fieldtype") != "MultiLink":
+                        continue
+
+                    fieldname = field.get("fieldname")
+
+                    if fieldname not in data or not data[fieldname]:
+                        continue
+
+                    # Ensure string, split by comma, strip spaces
+                    raw_value = str(data[fieldname])
+                    values = [v.strip() for v in raw_value.split(",") if v.strip()]
+
+                    data[fieldname] = values
 
                 # Step 3.5: Resolve linked fields to IDs
                 for field in schema["fields"]:
@@ -625,6 +638,10 @@ async def bulk_upload_nodes(
                             MERGE (source)-[:{rel["relationship_type"]}]->(target)
                             """
                         await db.run(relation_query, val=val, source_id=data["id"])
+
+                if doctype == "assets":
+                    crud = GenericCRUD(db, doctype)
+                    await crud.create_risks_for_asset(data)
 
                 created.append(data["id"])
 

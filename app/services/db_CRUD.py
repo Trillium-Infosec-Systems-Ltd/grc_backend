@@ -17,14 +17,106 @@ class GenericCRUD:
     def __init__(self, session: AsyncSession, doctype: str):
         self.session = session
         self.schema = load_schema(doctype)
-        self.doctype = doctype 
-    
+        self.doctype = doctype
+
+    async def create_risks_for_asset(self, asset_data: dict):
+        """
+        Given an asset node data, compute threats and create associated risks.
+        This can be reused by both single and bulk asset creation.
+        """
+        security_controls = asset_data["security_controls"]
+        all_threat_ids = set()
+
+        for cont in security_controls:
+            query = """
+            MATCH (t:threat)
+            WHERE $cont IN t.relevant_controls
+            RETURN t.id AS threat_id
+            """
+            result = await self.session.run(query, cont=cont)
+            async for record in result:
+                all_threat_ids.add(record["threat_id"])
+
+        for threat_id in all_threat_ids:
+            db_generator = get_db()
+            db = await anext(db_generator)
+            try:
+                calculated_risk = await compute_threat_info(threat_id, asset_data["asset_value"], db)
+
+                # Generate ID for risk node
+                id_query = """
+                MERGE (c:Counter {doctype: $doctype})
+                ON CREATE SET c.current = 1
+                ON MATCH SET c.current = c.current + 1
+                RETURN c.current AS new_id
+                """
+                result = await self.session.run(id_query, doctype="risks")
+                record = await result.single()
+                new_id = record["new_id"]
+                risk_id = f"risks-{new_id}"
+
+                risk_data = {
+                    "id": risk_id,
+                    "risk_by_asset": "Name",
+                    "associated_assets": asset_data["id"],
+                    "type": asset_data["type"],
+                    "asset_value": asset_data["asset_value"],
+                    "associated_threats": threat_id,
+                    "threat_probability": calculated_risk["likelihood"],
+                    "related_vulnerabilities": calculated_risk["vulnerabilities"],
+                    "control_ids": cont,
+                    "ease_of_exploitation": calculated_risk["ease_of_exploitation"],
+                    "residual_risk": calculated_risk["risk"]
+                }
+
+                # Create node
+                create_query = """
+                CREATE (n:risks $data)
+                RETURN n
+                """
+                await self.session.run(create_query, data=risk_data)
+
+                # Create relationships
+                schema = load_schema("risks")
+                for field in schema["fields"]:
+                    if field.get("fieldtype") not in ["Link", "MultiLink"]:
+                        continue
+
+                    fieldname = field["fieldname"]
+                    target_value = risk_data.get(fieldname)
+                    if not target_value:
+                        continue
+
+                    target_doctype = field["link_to"]
+                    relationship_type = field.get("relationship_type", "RELATED_TO").upper()
+                    direction = field.get("relationship_direction", "outgoing")
+                    values = target_value if isinstance(target_value, list) else [target_value]
+
+                    for val in values:
+                        if direction == "incoming":
+                            relation_query = f"""
+                            MATCH (target:{target_doctype} {{id: $val}})
+                            MATCH (source:risks {{id: $source_id}})
+                            MERGE (target)-[r:{relationship_type}]->(source)
+                            """
+                        else:
+                            relation_query = f"""
+                            MATCH (target:{target_doctype} {{id: $val}})
+                            MATCH (source:risks {{id: $source_id}})
+                            MERGE (source)-[r:{relationship_type}]->(target)
+                            """
+                        await self.session.run(relation_query, val=val, source_id=risk_id)
+
+            finally:
+                await db_generator.aclose()
+
+
     async def create(self, data: dict):
 
         # Special case for 'control_question' with multiple questions
         if self.doctype == "control_question" and isinstance(data.get("question"), list):
             control_id = data.get("control_id")
-            
+
             query ="""
                 MATCH(c:control {id:$control_id})
                 RETURN c.control_id as control
@@ -170,109 +262,18 @@ class GenericCRUD:
                     MERGE (source)-[r:{relationship_type}]->(target)
                     """
                 await self.session.run(relation_query, val=val, source_id=data["id"])
-        
+
         if self.doctype == "assets":
+            await self.create_risks_for_asset(data)
 
-            
-            security_controls = data["security_controls"]
-            all_threat_ids = set()  # using set to avoid duplicates
 
-            for cont in security_controls:
-                query = """
-                MATCH (t:threat)
-                WHERE $cont IN t.relevant_controls
-                RETURN t.id AS threat_id
-                """
-                result = await self.session.run(query, cont=cont)
-                
-                async for record in result:
-                    all_threat_ids.add(record["threat_id"])
 
-            # Convert to list if needed
-            all_threat_ids = list(all_threat_ids)
-        
-            # 👇 Now you can loop on threat_ids
-            for threat_id in all_threat_ids:
-                db_generator = get_db()
-                db = await anext(db_generator)
-                try:
-                    calculated_risk = await compute_threat_info(threat_id, data["asset_value"], db)
-                    id_query = """
-                    MERGE (c:Counter {doctype: $doctype})
-                    ON CREATE SET c.current = 1
-                    ON MATCH SET c.current = c.current + 1
-                    RETURN c.current AS new_id
-                    """
-                    result = await self.session.run(id_query, doctype="risks")
-                    record = await result.single()
-                    new_id = record["new_id"]
-                    id = f"{self.doctype.lower()}-{new_id}"
 
-                    
-                    risk_data = {}
-                    risk_data["id"] = id
-                    risk_data["risk_by_asset"]= "Name"
-                    risk_data["associated_assets"] = data["id"]
-                    risk_data["type"]= data["type"]
-                    risk_data["asset_value"] = data["asset_value"]
-                    risk_data["associated_threats"] = threat_id
-                    risk_data["threat_probability"] = calculated_risk["likelihood"]
-                    risk_data["related_vulnerabilities"] = calculated_risk["vulnerabilities"]
-                    risk_data["control_ids"] = cont
-                    risk_data["ease_of_exploitation"] = calculated_risk["ease_of_exploitation"]
-                    risk_data["residual_risk"] = calculated_risk["risk"]
-                    
-                    create_query = f"""
-                    CREATE (n:risks $data)
-                    RETURN n
-                    """
-                    result = await self.session.run(create_query, data=risk_data)
-                    record = await result.single()
-                    node = record["n"]
-                    
-# Fix: load risk schema instead of assets
-                    schema = load_schema("risks")
 
-                    # Handle Link / MultiLink relationships
-                    for field in schema["fields"]:
-                        if field.get("fieldtype") not in ["Link", "MultiLink"]:
-                            continue
 
-                        fieldname = field.get("fieldname")
-                        target_value = risk_data.get(fieldname)
-                        if not target_value:
-                            continue
 
-                        target_doctype = field["link_to"]
-                        relationship_type = field.get("relationship_type", "RELATED_TO").upper()
-                        direction = field.get("relationship_direction", "outgoing")
-                        values = target_value if isinstance(target_value, list) else [target_value]
 
-                        for val in values:
-                            if direction == "incoming":
-                                relation_query = f"""
-                                MATCH (target:{target_doctype} {{id: $val}})
-                                MATCH (source:risks {{id: $source_id}})
-                                MERGE (target)-[r:{relationship_type}]->(source)
-                                """
-                            else:
-                                relation_query = f"""
-                                MATCH (target:{target_doctype} {{id: $val}})
-                                MATCH (source:risks {{id: $source_id}})
-                                MERGE (source)-[r:{relationship_type}]->(target)
-                                """
-                            # Fix: use correct ID of created risk node
-                            await self.session.run(relation_query, val=val, source_id=id)
 
-                finally:
-                    await db_generator.aclose()
-
-        
-            
-            
-            
-            
-            
 
         return {"n": node, "id": data["id"]}
     async def get_all(self, skip: int = 0, limit: int = 10, filters: dict = None):
@@ -401,7 +402,7 @@ class GenericCRUD:
         result = await self.session.run(query, item_id=item_id)
         deleted = await result.single()
         return deleted["deleted_count"]
-    
+
     async def update(self, item_id: str, data: dict):
         now = datetime.utcnow().isoformat()
         data["updated_at"] = now
