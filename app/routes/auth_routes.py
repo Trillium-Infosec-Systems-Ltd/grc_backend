@@ -6,22 +6,25 @@ from services.database import get_db
 from services.dependencies import get_current_user
 from fastapi import Body
 from fastapi import Query
-from schemas.user_schema import UserCreate, UserLogin,UserUpdate,RefreshTokenRequest
-from services.auth_service import hash_password, verify_password, create_access_token,create_refresh_token,decode_token
+from schemas.user_schema import UserCreate, UserLogin, UserUpdate, RefreshTokenRequest
+from services.auth_service import hash_password, verify_password, create_access_token, create_refresh_token, \
+    decode_token
 
 # router = APIRouter(prefix="/auth", tags=["Auth"])
 router = APIRouter()
 
+
 @router.post("/users")
-async def register(user: UserCreate,  session: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
+async def register(user: UserCreate, session: AsyncSession = Depends(get_db),
+                   current_user: dict = Depends(get_current_user)):
     # Step 1: Check if user already exists
-    
+
     creator_role = current_user.get("role")
     target_role = user.role
 
     if creator_role == "user":
         raise HTTPException(status_code=403, detail="Users cannot create other users")
-    
+
     if creator_role == "partner" and target_role != "user":
         raise HTTPException(
             status_code=403,
@@ -34,12 +37,16 @@ async def register(user: UserCreate,  session: AsyncSession = Depends(get_db), c
             detail="Super Admin can only create users or partners"
         )
 
-    
-    
     check_query = "MATCH (u:users {email: $email}) RETURN u"
     result = await session.run(check_query, email=user.email)
     if await result.single():
         raise HTTPException(status_code=400, detail="User already exists")
+
+    # Step 1: Check if username already exists
+    username_check_query = "MATCH (u:users {username: $username}) RETURN u"
+    username_result = await session.run(username_check_query, username=user.username)
+    if await username_result.single():
+        raise HTTPException(status_code=400, detail="Username already exists")
 
     # Step 2: Generate user ID using Counter
     counter_query = """
@@ -57,14 +64,20 @@ async def register(user: UserCreate,  session: AsyncSession = Depends(get_db), c
     create_user_query = """
     CREATE (u:users {
         id: $id,
-        name:$name,
+        name: $name,
+        username: $username,
         email: $email,
         password: $password,
         role: $role,
-        org_id: $org_id
+        date_of_birth: $date_of_birth,
+        present_address: $present_address,
+        permanent_address: $permanent_address,
+        city: $city,
+        postal_code: $postal_code,
+        country: $country
     }) RETURN u
     """
-    await session.run(create_user_query, id=user_id,name = user.name,email=user.email,
+    await session.run(create_user_query, id=user_id, name=user.name, email=user.email,
                       password=hash_password(user.password),
                       role=user.role, org_id=user.org_id)
 
@@ -78,31 +91,48 @@ async def register(user: UserCreate,  session: AsyncSession = Depends(get_db), c
 
     return {"msg": "users registered successfully", "id": user_id}
 
+
 @router.put("/users/{user_id}")
-async def update_user(user_id: str, user: UserUpdate, session: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
+async def update_user(user_id: str, user: UserUpdate, session: AsyncSession = Depends(get_db),
+                      current_user: dict = Depends(get_current_user)):
     # Step 1: Check if the user exists
     check_query = "MATCH (u:users {id: $user_id}) RETURN u"
     result = await session.run(check_query, user_id=user_id)
     existing_user = await result.single()
-    
+
     if not existing_user:
         raise HTTPException(status_code=404, detail="User not found")
 
     # Step 2: Authorization check based on user role
     creator_role = current_user.get("role")
     target_user = existing_user["u"]
-    
+
+    # if existing_user.:
+    #     raise HTTPException(status_code=404, detail="User not found")
+
     if creator_role == "user":
         raise HTTPException(status_code=403, detail="Users cannot update other users")
-    
+
     if creator_role == "partner" and target_user["role"] != "user":
         raise HTTPException(status_code=403, detail="Partners can only update users")
-    
+
     if creator_role == "super_admin" and target_user["role"] not in ["partner", "user"]:
         raise HTTPException(status_code=403, detail="Super Admin can only update users or partners")
-    
+
     # Step 3: Update the user's details (password, email, role, etc.)
     update_fields = {}
+    if user.name:
+        update_fields["name"] = user.name
+    if user.username:
+        username_check_query = """
+        MATCH (u:users)
+        WHERE u.username = $username AND u.id <> $user_id
+        RETURN u LIMIT 1
+        """
+        username_result = await session.run(username_check_query, username=user.username, user_id=user_id)
+        if await username_result.single():
+            raise HTTPException(status_code=400, detail="Username already exists")
+        update_fields["username"] = user.username
     if user.email:
         update_fields["email"] = user.email
     if user.password:
@@ -111,19 +141,39 @@ async def update_user(user_id: str, user: UserUpdate, session: AsyncSession = De
         update_fields["role"] = user.role
     if user.org_id:
         update_fields["org_id"] = user.org_id
+    if user.date_of_birth:
+        update_fields["date_of_birth"] = user.date_of_birth
+    if user.present_address:
+        update_fields["present_address"] = user.present_address
+    if user.permanent_address:
+        update_fields["permanent_address"] = user.permanent_address
+    if user.city:
+        update_fields["city"] = user.city
+    if user.postal_code:
+        update_fields["postal_code"] = user.postal_code
+    if user.country:
+        update_fields["country"] = user.country
 
     if not update_fields:
         raise HTTPException(status_code=400, detail="No valid fields provided to update")
 
     update_query = """
     MATCH (u:users {id: $user_id})
-    SET u.email = COALESCE($email, u.email),
+    SET u.name = COALESCE($name, u.name),
+        u.username = COALESCE($username, u.username),
+        u.email = COALESCE($email, u.email),
         u.password = COALESCE($password, u.password),
         u.role = COALESCE($role, u.role),
-        u.org_id = COALESCE($org_id, u.org_id)
+        u.org_id = COALESCE($org_id, u.org_id),
+        u.date_of_birth = COALESCE($date_of_birth, u.date_of_birth),
+        u.present_address = COALESCE($present_address, u.present_address),
+        u.permanent_address = COALESCE($permanent_address, u.permanent_address),
+        u.city = COALESCE($city, u.city),
+        u.postal_code = COALESCE($postal_code, u.postal_code),
+        u.country = COALESCE($country, u.country)
     RETURN u
     """
-    
+
     await session.run(update_query, user_id=user_id, **update_fields)
 
     # Step 4: If organization is updated, update relationship
@@ -148,9 +198,9 @@ async def update_user(user_id: str, user: UserUpdate, session: AsyncSession = De
 
 @router.get("/users/{user_id}")
 async def get_user_by_id(
-    user_id: str,
-    session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+        user_id: str,
+        session: AsyncSession = Depends(get_db),
+        current_user: dict = Depends(get_current_user)
 ):
     # Step 1: Check if user exists
     query = """
@@ -169,7 +219,7 @@ async def get_user_by_id(
     """
     result = await session.run(query, user_id=user_id)
     record = await result.single()
-    # 
+    #
 
     if not record:
         raise HTTPException(status_code=404, detail="User not found")
@@ -177,7 +227,8 @@ async def get_user_by_id(
     target_user = record["u"]
     relationship = record["relationships"][0] if record["relationships"] else None
 
-    relationship = dict(relationship["target_node"]) if relationship and relationship["target_label"][0] == "organization" else {}
+    relationship = dict(relationship["target_node"]) if relationship and relationship["target_label"][
+        0] == "organization" else {}
 
     # Step 2: Authorization check
     creator_role = current_user.get("role")
@@ -192,20 +243,20 @@ async def get_user_by_id(
     if creator_role == "partner" and target_user.get("org_id") != creator_org_id:
         raise HTTPException(status_code=403, detail="You can only view users within your organization")
 
-    return {"user": target_user,"relationships" : relationship}
+    return {"user": target_user, "relationships": relationship}
 
 
 @router.get("/users")
 async def get_users(
-    session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(10, ge=1, le=100)
+        session: AsyncSession = Depends(get_db),
+        current_user: dict = Depends(get_current_user),
+        skip: int = Query(0, ge=0),
+        limit: int = Query(10, ge=1, le=100)
 ):
     # import pdb;pdb.set_trace()
     creator_role = current_user.get("role")
     creator_user_id = current_user.get("id")
-    print("======================",creator_user_id)
+    print("======================", creator_user_id)
     creator_org_id = current_user.get("org_id")
 
     # Step 1: Super Admin - view all usersf
@@ -213,7 +264,7 @@ async def get_users(
         total_query = """MATCH (u:users) 
         WHERE u.id <> $creator_user_id
         RETURN count(u) AS total"""
-        result_total = await session.run(total_query,creator_user_id=creator_user_id)
+        result_total = await session.run(total_query, creator_user_id=creator_user_id)
         total = (await result_total.single())["total"]
 
         paginated_query = """
@@ -222,7 +273,7 @@ async def get_users(
         RETURN u
         SKIP $skip LIMIT $limit
         """
-        result = await session.run(paginated_query,creator_user_id=creator_user_id, skip=skip, limit=limit)
+        result = await session.run(paginated_query, creator_user_id=creator_user_id, skip=skip, limit=limit)
         users = [record["u"] for record in await result.data()]
 
         return {
@@ -239,7 +290,7 @@ async def get_users(
         WHERE u.id <> $creator_user_id
         RETURN count(u) AS total
         """
-        result_total = await session.run(total_query, org_id=creator_org_id,creator_user_id=creator_user_id)
+        result_total = await session.run(total_query, org_id=creator_org_id, creator_user_id=creator_user_id)
         total = (await result_total.single())["total"]
 
         paginated_query = """
@@ -249,7 +300,8 @@ async def get_users(
         RETURN u
         SKIP $skip LIMIT $limit
         """
-        result = await session.run(paginated_query, org_id=creator_org_id,creator_user_id=creator_user_id, skip=skip, limit=limit)
+        result = await session.run(paginated_query, org_id=creator_org_id, creator_user_id=creator_user_id, skip=skip,
+                                   limit=limit)
         users = [record["u"] for record in await result.data()]
 
         return {
@@ -264,7 +316,7 @@ async def get_users(
         query = """MATCH (u:users {id: $user_id}) 
         WHERE u.id <> $creator_user_id
         RETURN u"""
-        result = await session.run(query, user_id=creator_user_id,creator_user_id=creator_user_id)
+        result = await session.run(query, user_id=creator_user_id, creator_user_id=creator_user_id)
         user = await result.single()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
@@ -276,7 +328,6 @@ async def get_users(
         }
 
     raise HTTPException(status_code=403, detail="Unauthorized to view users")
-
 
 
 # =============================LOG in APIs with access and resfresh token ==========================================================
@@ -298,7 +349,8 @@ async def login(user: UserLogin, session: AsyncSession = Depends(get_db)):
         "id": db_user["id"],
         "email": db_user["email"],
         "role": db_user["role"],
-        "name":db_user.get("name"),
+        "name": db_user.get("name"),
+        "username": db_user.get("username"),
         "org_id": db_user.get("org_id")
     }
 
@@ -308,13 +360,14 @@ async def login(user: UserLogin, session: AsyncSession = Depends(get_db)):
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
-        "role":token_data["role"],
-        "name":token_data["name"],
-        "org_id":token_data["org_id"],
+        "role": token_data["role"],
+        "name": token_data["name"],
+        "username": token_data["username"],
+        "org_id": token_data["org_id"],
         "token_type": "bearer"
     }
-    
-    
+
+
 @router.post("/refresh")
 async def refresh_token(body: RefreshTokenRequest):
     payload = decode_token(body.refresh_token)
