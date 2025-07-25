@@ -22,7 +22,7 @@ import os
 import uuid
 from typing import List
 import pandas as pd
-from app.services.db_CRUD import GenericCRUD
+
 
 
 
