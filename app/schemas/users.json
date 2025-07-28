@@ -59,7 +59,7 @@
       },
         {
         "fieldname": "org_id",
-        "fieldtype": "Link",
+        "fieldtype": "MultiLink",
         "label": "Organization",
         "link_to": "organization",
         "target_field": "organization_name",

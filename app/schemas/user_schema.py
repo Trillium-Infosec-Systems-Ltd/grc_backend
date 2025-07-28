@@ -2,13 +2,22 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional
 
 
+from typing import List, Optional
+from pydantic import BaseModel, EmailStr
+
+
+class OrgSwitchRequest(BaseModel):
+    org_id: str
+
+
 class UserCreate(BaseModel):
     name: str
-    username: str
+    username: Optional[str] = None
     email: EmailStr
     password: str
     role: str  # super_admin, partner_user, internal_user
-    org_id: Optional[str] = None
+    org_id: Optional[List[str]] = []  # <-- updated to list
+
     date_of_birth: Optional[str] = None
     present_address: Optional[str] = None
     permanent_address: Optional[str] = None
@@ -21,9 +30,9 @@ class UserUpdate(BaseModel):
     name: Optional[str] = None
     username: Optional[str] = None
     email: Optional[str] = None
-    # password: Optional[str] = None
+    password: Optional[str] = None  # <-- re-enabled for updates
     role: Optional[str] = None
-    org_id: Optional[str] = None
+    org_id: Optional[List[str]] = None  # <-- updated to list
     date_of_birth: Optional[str] = None
     present_address: Optional[str] = None
     permanent_address: Optional[str] = None
@@ -42,7 +51,7 @@ class UserOut(BaseModel):
     id: str
     email: EmailStr
     role: str
-    org_id: Optional[str] = None
+    org_id: Optional[List[str]] = None  # <-- updated to list
 
 
 class RefreshTokenRequest(BaseModel):
