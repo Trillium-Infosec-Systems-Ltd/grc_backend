@@ -256,7 +256,11 @@ async def update_user(user_id: str, user: UserUpdate, session: AsyncSession = De
 
 
 @router.get("/users/{user_id}")
-async def get_user_by_id(user_id: str, session: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
+async def get_user_by_id(
+    user_id: str,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     query = """
     MATCH (u:users {id: $user_id})
     OPTIONAL MATCH (u)-[:ASSOCIATE_WITH]->(o:organization)
@@ -267,16 +271,18 @@ async def get_user_by_id(user_id: str, session: AsyncSession = Depends(get_db), 
     if not record:
         raise HTTPException(status_code=404, detail="User not found")
 
-    u = record["u"]
+    u = dict(record["u"])  # ✅ Convert Node to dict
     org_ids = record["org_ids"]
 
     creator_role = current_user.get("role")
     if creator_role == "user" and user_id != current_user.get("id"):
         raise HTTPException(status_code=403, detail="You cannot view other users")
+
     if creator_role == "partner" and not set(org_ids).intersection(set(current_user.get("org_id", []))):
         raise HTTPException(status_code=403, detail="You can only view users within your organization")
 
-    u["org_id"] = org_ids
+    u["org_id"] = org_ids  # ✅ Now this works
+
     return {"user": u}
 
 
