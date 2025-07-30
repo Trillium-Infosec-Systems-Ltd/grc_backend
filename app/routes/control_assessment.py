@@ -12,7 +12,7 @@ import json
 router = APIRouter()
 
 
-@router.post("/control-compliance")
+@router.post("/control-assessment")
 async def create_control_compliance(
     data: dict,
     session: AsyncSession = Depends(get_db),
@@ -77,7 +77,7 @@ async def create_control_compliance(
     return {"message": "Created", "id": node_id}
 
 
-@router.get("/control-compliance/{compliance_id}")
+@router.get("/control-assessment/{compliance_id}")
 async def get_control_compliance(compliance_id: str, session: AsyncSession = Depends(get_db)):
     query = """
     MATCH (n:control_compliance {id: $id})
@@ -93,7 +93,7 @@ async def get_control_compliance(compliance_id: str, session: AsyncSession = Dep
     return node
 
 
-@router.put("/control-compliance/{compliance_id}")
+@router.put("/control-assessment/{compliance_id}")
 async def update_control_compliance(
     compliance_id: str,
     data: dict,
@@ -132,7 +132,7 @@ async def update_control_compliance(
     return {"message": "Updated"}
 
 
-@router.delete("/control-compliance/{compliance_id}")
+@router.delete("/control-assessment/{compliance_id}")
 async def delete_control_compliance(compliance_id: str, session: AsyncSession = Depends(get_db)):
     query = """
     MATCH (n:control_compliance {id: $id})
