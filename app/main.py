@@ -1,6 +1,6 @@
 from fastapi import FastAPI, APIRouter
 from services.neo4j_client import get_neo4j_driver
-from routes import db_CRUD, health,schemas,generics,relationships,auth_routes,complaince  # Separate routers
+from routes import db_CRUD, health,schemas,generics,relationships,auth_routes,control_assessment  # Separate routers
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 # from app.routes.auth_routes import router as auth_router
@@ -24,7 +24,7 @@ app.include_router(db_CRUD.router,prefix="/api")
 app.include_router(schemas.router,prefix="/api")
 app.include_router(generics.router,prefix="/api")
 app.include_router(relationships.router, prefix="/api")
-app.include_router(complaince.router,prefix="/api")
+app.include_router(control_assessment.router,prefix="/api")
 
 app.include_router(auth_routes.router,prefix="/api/auth",tags=["auth"])
 app.mount("/static", StaticFiles(directory="static"), name="uploads")
