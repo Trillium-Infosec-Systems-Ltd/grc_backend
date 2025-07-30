@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends
 from services.database import get_db
 # from routes.generics import compute_threat_info
 from services.risk_calculator import compute_threat_info
+from routes.control_assessment import create_control_assessment_for_organization
 
 
 class GenericCRUD:
@@ -269,8 +270,73 @@ class GenericCRUD:
         if self.doctype == "assets":
             await self.create_risks_for_asset(data)
 
+        # Special case for control: create assessments for all organizations
+        if self.doctype == "control":
+            await self.create_control_assessments_for_all_organizations(data["id"])
+        
+        # Special case for organization: create assessments for all existing controls
+        if self.doctype == "organization":
+            await self.create_assessments_for_all_existing_controls(data["id"])
+
+        # Special case for assessment: handle questions serialization
+        if self.doctype == "assessment":
+            questions = data.get("questions", [])
+            if isinstance(questions, list):
+                data["questions"] = json.dumps(questions)
 
         return {"n": node, "id": data["id"]}
+
+    async def create_control_assessments_for_all_organizations(self, control_id: str):
+        """
+        Create control assessments for all organizations when a new control is created.
+        """
+        # Get all organizations
+        org_query = """
+        MATCH (o:organization)
+        RETURN o.id as org_id
+        """
+        result = await self.session.run(org_query)
+        organizations = await result.data()
+        
+        # Create assessment for each organization
+        for org in organizations:
+            org_id = org["org_id"]
+            try:
+                await create_control_assessment_for_organization(
+                    session=self.session,
+                    control_id=control_id,
+                    organization_id=org_id,
+                    current_user=self.current_user
+                )
+            except Exception as e:
+                print(f"Failed to create assessment for organization {org_id}: {str(e)}")
+                # Continue with other organizations even if one fails
+
+    async def create_assessments_for_all_existing_controls(self, organization_id: str):
+        """
+        Create assessments for all existing controls when a new organization is created.
+        """
+        # Get all existing controls
+        control_query = """
+        MATCH (c:control)
+        RETURN c.id as control_id
+        """
+        result = await self.session.run(control_query)
+        controls = await result.data()
+        
+        # Create assessment for each control
+        for control in controls:
+            control_id = control["control_id"]
+            try:
+                await create_control_assessment_for_organization(
+                    session=self.session,
+                    control_id=control_id,
+                    organization_id=organization_id,
+                    current_user=self.current_user
+                )
+            except Exception as e:
+                print(f"Failed to create assessment for control {control_id}: {str(e)}")
+                # Continue with other controls even if one fails
 
     async def get_all(self,skip: int = 0, limit: int = 10, filters: dict = None):
         filters = filters or {}
@@ -283,7 +349,17 @@ class GenericCRUD:
             params[param_key] = value
 
         if self.doctype == "assets" and self.current_user:
-            where_clauses.append(f"n.org_id = ${self.current_user.org_id}")
+            org_id = self.current_user.get('org_id')
+            if org_id:
+                where_clauses.append("n.org_id = $org_id")
+                params["org_id"] = org_id
+
+        # Special case for assessment: filter by user's organization
+        if self.doctype == "assessment" and self.current_user:
+            org_id = self.current_user.get('org_id')
+            if org_id:
+                where_clauses.append("n.organization_id = $org_id")
+                params["org_id"] = org_id
 
         # Build the WHERE clause string
         where_str = ""
@@ -363,6 +439,15 @@ class GenericCRUD:
                 "relationships": relationships
             })
 
+        # Special case for assessment: deserialize questions
+        if self.doctype == "assessment":
+            for item in items:
+                if "questions" in item["node"] and isinstance(item["node"]["questions"], str):
+                    try:
+                        item["node"]["questions"] = json.loads(item["node"]["questions"])
+                    except json.JSONDecodeError:
+                        item["node"]["questions"] = []
+
         return {
             "total": total,
             "skip": skip,
@@ -391,10 +476,21 @@ class GenericCRUD:
         result = await self.session.run(query, item_id=item_id)
         record = await result.single()
         if record:
-            return {
+            result_data = {
                 "node": record["n"],
                 "relationships": record["relationships"]
             }
+            
+            # Special case for assessment: deserialize questions
+            if self.doctype == "assessment" and "questions" in result_data["node"]:
+                questions = result_data["node"]["questions"]
+                if isinstance(questions, str):
+                    try:
+                        result_data["node"]["questions"] = json.loads(questions)
+                    except json.JSONDecodeError:
+                        result_data["node"]["questions"] = []
+            
+            return result_data
         return None
 
     async def delete(self, item_id: str):
@@ -468,6 +564,27 @@ class GenericCRUD:
             ease_of_exploitation = ease_map.get(str(data['rating']).strip(), "Unknown")
 
             data["ease_of_exploitation"] =ease_of_exploitation
+
+        # Special case for assessment: handle questions serialization and effectiveness calculation
+        if self.doctype == "assessment":
+            questions = data.get("questions", [])
+            if isinstance(questions, list):
+                data["questions"] = json.dumps(questions)
+                
+                # Calculate effectiveness percentage
+                total_weight = sum(q.get("weight", 1) for q in questions)
+                scored_weight = sum(q.get("weight", 1) for q in questions if q.get("answer"))
+                effectiveness = round((scored_weight / total_weight) * 100, 2) if total_weight > 0 else 0.0
+                data["effectiveness_percentage"] = effectiveness
+
+                # Determine compliance status based on effectiveness
+                if effectiveness >= 80:
+                    data["compliance_status"] = "Compliant"
+                elif effectiveness >= 50:
+                    data["compliance_status"] = "Partially Compliant"
+                else:
+                    data["compliance_status"] = "Non-Compliant"
+
         # ✅ Generic update logic for all doctypes
         query = f"""
         MATCH (n:{self.doctype} {{id: $item_id}})
