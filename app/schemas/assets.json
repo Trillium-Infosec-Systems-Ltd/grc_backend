@@ -20,7 +20,7 @@
       "label": "Asset ID",
       "default_label": true,
       "required": false,
-      "display_on_frontend": true,
+      "display_on_frontend": false,
       "span": 12,
       "validation": {
         "min_length": 2,
