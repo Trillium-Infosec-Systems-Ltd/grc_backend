@@ -46,18 +46,18 @@ async def create_control_assessment_for_organization(
     
     # Generate assessment ID
     id_query = """
-    MERGE (c:Counter {doctype: 'assessment'})
+    MERGE (c:Counter {doctype: 'control_assessment'})
     ON CREATE SET c.current = 1
     ON MATCH SET c.current = c.current + 1
     RETURN c.current AS new_id
     """
     result = await session.run(id_query)
     record = await result.single()
-    assessment_id = f"assessment-{record['new_id']}"
+    assessment_id = f"control_assessment-{record['new_id']}"
     
     # Create the assessment node
     create_query = """
-    CREATE (n:assessment {
+    CREATE (n:control_assessment {
         id: $id,
         control_id: $control_id,
         organization_id: $organization_id,
@@ -92,14 +92,14 @@ async def create_control_assessment_for_organization(
     # Link to organization
     await session.run("""
     MATCH (o:organization {id: $org_id})
-    MATCH (ca:assessment {id: $assessment_id})
+    MATCH (ca:control_assessment {id: $assessment_id})
     MERGE (o)-[:HAS_CONTROL_ASSESSMENT]->(ca)
     """, org_id=organization_id, assessment_id=assessment_id)
     
     # Link to control
     await session.run("""
     MATCH (c:control {id: $control_id})
-    MATCH (ca:assessment {id: $assessment_id})
+    MATCH (ca:control_assessment {id: $assessment_id})
     MERGE (c)-[:HAS_ASSESSMENT]->(ca)
     """, control_id=control_id, assessment_id=assessment_id)
     
@@ -206,7 +206,7 @@ async def get_control_assessment(
     """
     # Get assessment with control details and questions
     query = """
-    MATCH (ca:assessment {id: $assessment_id})
+    MATCH (ca:control_assessment {id: $assessment_id})
     MATCH (c:control)-[:HAS_ASSESSMENT]->(ca)
     OPTIONAL MATCH (cq:control_question)-[:HAS_QUESTION]->(c)
     RETURN ca, c, collect(cq) as control_questions
@@ -568,7 +568,7 @@ async def get_assessments_by_control(
         raise HTTPException(status_code=400, detail="User not associated with any organization")
     
     query = """
-    MATCH (ca:assessment {control_id: $control_id, organization_id: $org_id})
+    MATCH (ca:control_assessment {control_id: $control_id, organization_id: $org_id})
     MATCH (c:control {id: $control_id})
     RETURN ca, c.control_name as control_name, c.control_id as control_id, c.category as category
     """
@@ -605,7 +605,7 @@ async def get_control_assessment_statistics(
         raise HTTPException(status_code=400, detail="User not associated with any organization")
     
     query = """
-    MATCH (ca:assessment {control_id: $control_id, organization_id: $org_id})
+    MATCH (ca:control_assessment {control_id: $control_id, organization_id: $org_id})
     RETURN 
         ca.compliance_status as compliance_status,
         ca.effectiveness_percentage as effectiveness_percentage,
@@ -744,7 +744,7 @@ async def update_assessment_for_organization(session: AsyncSession, control_id: 
     """
     # Find existing assessment
     find_query = """
-    MATCH (ca:assessment {control_id: $control_id, organization_id: $organization_id})
+    MATCH (ca:control_assessment {control_id: $control_id, organization_id: $organization_id})
     RETURN ca
     """
     result = await session.run(find_query, control_id=control_id, organization_id=organization_id)
@@ -758,7 +758,7 @@ async def update_assessment_for_organization(session: AsyncSession, control_id: 
         ]
         
         update_query = """
-        MATCH (ca:assessment {control_id: $control_id, organization_id: $organization_id})
+        MATCH (ca:control_assessment {control_id: $control_id, organization_id: $organization_id})
         SET ca.questions = $questions,
             ca.updated_at = $updated_at
         RETURN ca
@@ -794,7 +794,7 @@ async def save_assessment_answers(
     
     # Verify assessment exists and belongs to user's organization
     verify_query = """
-    MATCH (ca:assessment {id: $assessment_id})
+    MATCH (ca:control_assessment {id: $assessment_id})
     MATCH (o:organization {id: $org_id})-[:HAS_CONTROL_ASSESSMENT]->(ca)
     RETURN ca
     """
@@ -820,7 +820,7 @@ async def save_assessment_answers(
     # Update assessment
     now = datetime.utcnow().isoformat()
     update_query = """
-    MATCH (ca:assessment {id: $assessment_id})
+    MATCH (ca:control_assessment {id: $assessment_id})
     SET ca.questions = $questions,
         ca.control_rating = $control_rating,
         ca.compliance_status = $compliance_status,

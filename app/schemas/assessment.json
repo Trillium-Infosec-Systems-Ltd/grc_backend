@@ -1,5 +1,5 @@
 {
-  "doctype": "assessment",
+  "doctype": "control_assessment",
   "fields": [
     {
       "fieldname": "control_id",

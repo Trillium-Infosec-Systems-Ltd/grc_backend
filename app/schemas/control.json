@@ -1,4 +1,4 @@
-
+ 
 {
   "doctype": "Control",
   "fields": [
@@ -86,7 +86,7 @@
       "required": false,
       "hidden": true
     },
-
+ 
     {
       "fieldname": "reference_evidence",
       "fieldtype": "LongText",
@@ -140,14 +140,6 @@
       "required": false
     },
     {
-      "fieldname": "next_review_date",
-      "fieldtype": "Date",
-      "label": "Next Review Date",
-      "display_on_frontend": false,
-      "span": 12,
-      "required": true
-    },
-    {
       "fieldname": "audit_requirements",
       "fieldtype": "LongText",
       "label": "Audit Requirements",
@@ -197,17 +189,6 @@
       "hidden": true,
       "display_on_frontend": false
     },
-     {
-      "fieldname": "rating",
-      "fieldtype": "Data",
-      "label": "Control Rating",
-      "required": false,
-      "default_label": false,
-      "span": 12,
-      "display_on_frontend": true,
-      "default": "Medium",
-      "disabled":true
-    },
     {
       "fieldname": "applicable_asset_category",
       "fieldtype": "MultiSelect",
@@ -228,41 +209,7 @@
       "label": "Remarks",
       "span": 12,
       "display_on_frontend": false
-    },
-        {
-      "fieldname": "ease_of_exploitation",
-      "fieldtype": "Data",
-      "label": "ease_of_exploitation",
-      "display_on_frontend": false,
-      "span": 12,
-      "required": false,
-      "hidden":true
-    },
-    
-    {
-      "fieldname": "control_ratting_percentage",
-      "fieldtype": "Data",
-      "label": "Control_Ratting_percentage",
-      "span": 12,
-      "hidden":true,
-      "display_on_frontend": false
-    },
-    {
-      "fieldname": "compliance_status",
-      "fieldtype": "AssessmentProgress",
-      "label": "Compliance Status",
-      "options": ["Non-Compliant","Partially Compliant","Compliant" ],
-      "required": false,
-      "span": 24,
-      "display_on_frontend": true
-    },
-    {
-      "fieldname": "control_assessment",
-      "fieldtype": "question_table",
-      "label": "Control Assessment",
-      "span": 24,
-      "display_on_frontend": false
-
     }
   ]
 }
+ 

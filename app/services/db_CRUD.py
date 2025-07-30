@@ -354,8 +354,8 @@ class GenericCRUD:
                 where_clauses.append("n.org_id = $org_id")
                 params["org_id"] = org_id
 
-        # Special case for assessment: filter by user's organization
-        if self.doctype == "assessment" and self.current_user:
+        # Special case for control_assessment: filter by user's organization
+        if self.doctype == "control_assessment" and self.current_user:
             org_id = self.current_user.get('org_id')
             if org_id:
                 where_clauses.append("n.organization_id = $org_id")
@@ -439,8 +439,8 @@ class GenericCRUD:
                 "relationships": relationships
             })
 
-        # Special case for assessment: deserialize questions
-        if self.doctype == "assessment":
+        # Special case for control_assessment: deserialize questions
+        if self.doctype == "control_assessment":
             for item in items:
                 if "questions" in item["node"] and isinstance(item["node"]["questions"], str):
                     try:
@@ -481,8 +481,8 @@ class GenericCRUD:
                 "relationships": record["relationships"]
             }
             
-            # Special case for assessment: deserialize questions
-            if self.doctype == "assessment" and "questions" in result_data["node"]:
+            # Special case for control_assessment: deserialize questions
+            if self.doctype == "control_assessment" and "questions" in result_data["node"]:
                 questions = result_data["node"]["questions"]
                 if isinstance(questions, str):
                     try:
@@ -565,8 +565,8 @@ class GenericCRUD:
 
             data["ease_of_exploitation"] =ease_of_exploitation
 
-        # Special case for assessment: handle questions serialization and effectiveness calculation
-        if self.doctype == "assessment":
+        # Special case for control_assessment: handle questions serialization and effectiveness calculation
+        if self.doctype == "control_assessment":
             questions = data.get("questions", [])
             if isinstance(questions, list):
                 data["questions"] = json.dumps(questions)
