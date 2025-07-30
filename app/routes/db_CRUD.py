@@ -24,7 +24,8 @@ router = APIRouter()
 async def create_item(
     doctype: str,
     data: dict,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+
 ):
     crud = GenericCRUD(db, doctype)
     try:
@@ -44,12 +45,13 @@ async def get_all_items(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     filters = dict(request.query_params)
     filters.pop("skip", None)
     filters.pop("limit", None)
 
-    crud = GenericCRUD(db, doctype)
+    crud = GenericCRUD(db, doctype,current_user)
     try:
         paginated_data = await crud.get_all(
             skip=skip,
@@ -86,6 +88,8 @@ async def delete_item(doctype: str, item_id: str, db: AsyncSession = Depends(get
     if not count:
         raise HTTPException(404, detail="Item not found or not deleted")
     return {"detail": "Deleted successfully"}
+
+
 
 
 

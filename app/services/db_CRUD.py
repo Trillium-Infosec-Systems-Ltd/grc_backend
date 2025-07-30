@@ -1,5 +1,7 @@
 # this is a comment
 from neo4j import AsyncSession
+from sqlalchemy.sql.functions import current_user
+
 from services.schema_loader import load_schema
 import uuid
 from neo4j import AsyncDriver
@@ -14,10 +16,11 @@ from services.risk_calculator import compute_threat_info
 
 
 class GenericCRUD:
-    def __init__(self, session: AsyncSession, doctype: str):
+    def __init__(self, session: AsyncSession, doctype: str,current_user):
         self.session = session
         self.schema = load_schema(doctype)
         self.doctype = doctype
+        self.current_user = current_user
 
     async def create_risks_for_asset(self, asset_data: dict):
         """
@@ -110,7 +113,6 @@ class GenericCRUD:
             finally:
                 await db_generator.aclose()
 
-
     async def create(self, data: dict):
 
         # Special case for 'control_question' with multiple questions
@@ -124,6 +126,7 @@ class GenericCRUD:
 
             result = await self.session.run(query, control_id=control_id)
             record = await result.single()
+
 
 
             if record:
@@ -267,15 +270,8 @@ class GenericCRUD:
             await self.create_risks_for_asset(data)
 
 
-
-
-
-
-
-
-
-
         return {"n": node, "id": data["id"]}
+
     async def get_all(self, skip: int = 0, limit: int = 10, filters: dict = None):
         filters = filters or {}
         where_clauses = []
@@ -286,7 +282,10 @@ class GenericCRUD:
             where_clauses.append(f"n.{key} = ${param_key}")
             params[param_key] = value
 
-        where_str = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+        if self.doctype == "assets":
+            where_clauses.append(f"n.{"org_id"} = ${current_user.org_id}")
+
+        where_str = where_clauses.append(f"n.{key} = ${param_key}")
 
         # Get total count
         count_query = f"""
@@ -367,6 +366,7 @@ class GenericCRUD:
             "limit": limit,
             "items": items
         }
+
     async def get_by_id(self, item_id: str):
         query = f"""
         MATCH (n:{self.doctype} {{id: $item_id}})
@@ -393,6 +393,7 @@ class GenericCRUD:
                 "relationships": record["relationships"]
             }
         return None
+
     async def delete(self, item_id: str):
         query = f"""
         MATCH (n:{self.doctype} {{id: $item_id}})
