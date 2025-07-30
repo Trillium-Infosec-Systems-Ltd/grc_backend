@@ -1,0 +1,96 @@
+{
+  "doctype": "control_assessment",
+  "fields": [
+    {
+      "fieldname": "control_id",
+      "fieldtype": "Link",
+      "label": "Control",
+      "link_to": "control",
+      "target_field": "control_name",
+      "relationship_type": "HAS_ASSESSMENT",
+      "relationship_direction": "incoming",
+      "display_on_frontend": true,
+      "span": 12,
+      "required": true
+    },
+    {
+      "fieldname": "organization_id",
+      "fieldtype": "Link",
+      "label": "Organization",
+      "link_to": "organization",
+      "target_field": "organization_name",
+      "relationship_type": "HAS_CONTROL_ASSESSMENT",
+      "relationship_direction": "incoming",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": true
+    },
+    {
+      "fieldname": "control_rating",
+      "fieldtype": "Select",
+      "label": "Control Rating",
+      "options": ["Not Assessed", "Low", "Medium", "High"],
+      "display_on_frontend": true,
+      "span": 12,
+      "required": false,
+      "default": "Not Assessed"
+    },
+    {
+      "fieldname": "compliance_status",
+      "fieldtype": "Select",
+      "label": "Compliance Status",
+      "options": ["Not Assessed", "Non-Compliant", "Partially Compliant", "Compliant"],
+      "display_on_frontend": true,
+      "span": 12,
+      "required": false,
+      "default": "Not Assessed"
+    },
+    {
+      "fieldname": "effectiveness_percentage",
+      "fieldtype": "Data",
+      "label": "Effectiveness Percentage",
+      "display_on_frontend": true,
+      "span": 12,
+      "required": false,
+      "default": 0.0
+    },
+    {
+      "fieldname": "questions",
+      "fieldtype": "question_table",
+      "label": "Assessment Questions",
+      "display_on_frontend": true,
+      "span": 24,
+      "required": false
+    },
+    {
+      "fieldname": "created_by",
+      "fieldtype": "Link",
+      "label": "Created By",
+      "link_to": "users",
+      "target_field": "name",
+      "relationship_type": "CREATED_BY",
+      "relationship_direction": "incoming",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "created_at",
+      "fieldtype": "Datetime",
+      "label": "Created At",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": false,
+      "hidden": true
+    },
+    {
+      "fieldname": "updated_at",
+      "fieldtype": "Datetime",
+      "label": "Updated At",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": false,
+      "hidden": true
+    }
+  ]
+} 
