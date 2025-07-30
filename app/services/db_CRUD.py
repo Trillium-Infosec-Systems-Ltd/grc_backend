@@ -1,6 +1,6 @@
 # this is a comment
 from neo4j import AsyncSession
-from sqlalchemy.sql.functions import current_user
+
 
 from services.schema_loader import load_schema
 import uuid
