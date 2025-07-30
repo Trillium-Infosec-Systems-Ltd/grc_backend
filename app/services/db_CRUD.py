@@ -16,7 +16,7 @@ from services.risk_calculator import compute_threat_info
 
 
 class GenericCRUD:
-    def __init__(self, session: AsyncSession, doctype: str,current_user):
+    def __init__(self, session: AsyncSession, doctype: str, current_user=None):
         self.session = session
         self.schema = load_schema(doctype)
         self.doctype = doctype
@@ -282,8 +282,8 @@ class GenericCRUD:
             where_clauses.append(f"n.{key} = ${param_key}")
             params[param_key] = value
 
-        if self.doctype == "assets":
-            where_clauses.append(f"n.{"org_id"} = ${self.current_user.org_id}")
+        if self.doctype == "assets" and self.current_user:
+            where_clauses.append(f"n.org_id = ${self.current_user.org_id}")
 
         # Build the WHERE clause string
         where_str = ""
