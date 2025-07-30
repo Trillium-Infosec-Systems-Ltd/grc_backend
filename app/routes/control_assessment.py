@@ -33,12 +33,8 @@ async def create_control_assessment_for_organization(
     questions_data = await result.data()
     
     if not questions_data:
-        # If no questions found, create a default assessment structure
-        default_questions = [
-            {"question": "Is this control implemented?", "answer": False, "weight": 1},
-            {"question": "Is this control effective?", "answer": False, "weight": 1},
-            {"question": "Is this control monitored?", "answer": False, "weight": 1}
-        ]
+        # If no questions found, create assessment with empty questions
+        default_questions = []
     else:
         # Convert the questions and weights to assessment format
         questions_text = questions_data[0].get("questions_text", [])
@@ -203,18 +199,61 @@ async def get_control_assessment(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    query = """
-    MATCH (n:control_assessment {id: $id})
-    RETURN n
     """
-    result = await session.run(query, id=assessment_id)
+    Get assessment by ID with control details and questions.
+    This endpoint returns the assessment along with the control information
+    and questions that were attached to the control.
+    """
+    # Get assessment with control details and questions
+    query = """
+    MATCH (ca:assessment {id: $assessment_id})
+    MATCH (c:control)-[:HAS_ASSESSMENT]->(ca)
+    OPTIONAL MATCH (cq:control_question)-[:HAS_QUESTION]->(c)
+    RETURN ca, c, collect(cq) as control_questions
+    """
+    result = await session.run(query, assessment_id=assessment_id)
     record = await result.single()
     if not record:
         raise HTTPException(status_code=404, detail="Assessment record not found")
 
-    node = dict(record["n"])
-    node["questions"] = json.loads(node["questions"])
-    return node
+    # Extract assessment data
+    assessment = dict(record["ca"])
+    control = dict(record["c"])
+    control_questions = record["control_questions"]
+
+    # Deserialize questions from assessment
+    assessment["questions"] = json.loads(assessment["questions"]) if assessment.get("questions") else []
+
+    # Get control questions (original questions attached to control)
+    original_questions = []
+    for cq in control_questions:
+        if cq:  # Check if not None
+            cq_dict = dict(cq)
+            questions_text = cq_dict.get("questions_text", [])
+            weights = cq_dict.get("weights", [])
+            for i, question_text in enumerate(questions_text):
+                original_questions.append({
+                    "question": question_text,
+                    "weight": weights[i] if i < len(weights) else 1
+                })
+
+    # Prepare response with control details and questions
+    response = {
+        "assessment": assessment,
+        "control": {
+            "id": control.get("id"),
+            "control_id": control.get("control_id"),
+            "control_name": control.get("control_name"),
+            "category": control.get("category"),
+            "description": control.get("description"),
+            "rating": control.get("rating"),
+            "ease_of_exploitation": control.get("ease_of_exploitation")
+        },
+        "control_questions": original_questions,  # Original questions attached to control
+        "organization_id": assessment.get("organization_id")
+    }
+
+    return response
 
 
 @router.get("/control-assessment/my-organization")
@@ -588,4 +627,275 @@ async def get_control_assessment_statistics(
         "compliance_status": record["compliance_status"],
         "effectiveness_percentage": record["effectiveness_percentage"],
         "control_rating": record["control_rating"]
+    }
+
+
+@router.post("/control-assessment/questions")
+async def create_control_questions(
+    data: dict,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Create questions and attach them to a control.
+    This will also update existing assessments for all organizations.
+    """
+    control_id = data.get("control_id")
+    questions = data.get("questions", [])
+    
+    if not control_id or not questions:
+        raise HTTPException(status_code=400, detail="Missing control_id or questions")
+    
+    # Verify control exists
+    control_query = """
+    MATCH (c:control {id: $control_id})
+    RETURN c
+    """
+    result = await session.run(control_query, control_id=control_id)
+    if not await result.single():
+        raise HTTPException(status_code=404, detail="Control not found")
+    
+    # Create control_question node
+    now = datetime.utcnow().isoformat()
+    
+    # Generate ID for control_question
+    id_query = """
+    MERGE (c:Counter {doctype: 'control_question'})
+    ON CREATE SET c.current = 1
+    ON MATCH SET c.current = c.current + 1
+    RETURN c.current AS new_id
+    """
+    result = await session.run(id_query)
+    record = await result.single()
+    question_id = f"control_question-{record['new_id']}"
+    
+    # Prepare question data
+    questions_text = [q.get("question", "") for q in questions]
+    weights = [q.get("weight", 1) for q in questions]
+    
+    # Create control_question node
+    create_query = """
+    CREATE (n:control_question {
+        id: $id,
+        control: $control_id,
+        questions_text: $questions_text,
+        weights: $weights,
+        created_at: $created_at,
+        updated_at: $updated_at
+    })
+    RETURN n
+    """
+    
+    parameters = {
+        "id": question_id,
+        "control_id": control_id,
+        "questions_text": questions_text,
+        "weights": weights,
+        "created_at": now,
+        "updated_at": now
+    }
+    
+    result = await session.run(create_query, **parameters)
+    record = await result.single()
+    
+    # Create relationship to control
+    relation_query = """
+    MATCH (c:control {id: $control_id})
+    MATCH (cq:control_question {id: $question_id})
+    MERGE (c)-[:HAS_QUESTION]->(cq)
+    """
+    await session.run(relation_query, control_id=control_id, question_id=question_id)
+    
+    # Update existing assessments for all organizations
+    await update_assessments_for_all_organizations(session, control_id, questions)
+    
+    return {
+        "message": "Questions created and attached to control",
+        "question_id": question_id,
+        "control_id": control_id,
+        "questions_count": len(questions)
+    }
+
+
+async def update_assessments_for_all_organizations(session: AsyncSession, control_id: str, questions: list):
+    """
+    Update existing assessments for all organizations when new questions are added to a control.
+    """
+    # Get all organizations
+    org_query = """
+    MATCH (o:organization)
+    RETURN o.id as org_id
+    """
+    result = await session.run(org_query)
+    organizations = await result.data()
+    
+    # Update assessment for each organization
+    for org in organizations:
+        org_id = org["org_id"]
+        try:
+            await update_assessment_for_organization(session, control_id, org_id, questions)
+        except Exception as e:
+            print(f"Failed to update assessment for organization {org_id}: {str(e)}")
+
+
+async def update_assessment_for_organization(session: AsyncSession, control_id: str, organization_id: str, questions: list):
+    """
+    Update assessment for a specific organization with new questions.
+    """
+    # Find existing assessment
+    find_query = """
+    MATCH (ca:assessment {control_id: $control_id, organization_id: $organization_id})
+    RETURN ca
+    """
+    result = await session.run(find_query, control_id=control_id, organization_id=organization_id)
+    record = await result.single()
+    
+    if record:
+        # Update existing assessment with new questions
+        assessment_questions = [
+            {"question": q.get("question", ""), "answer": False, "weight": q.get("weight", 1)}
+            for q in questions
+        ]
+        
+        update_query = """
+        MATCH (ca:assessment {control_id: $control_id, organization_id: $organization_id})
+        SET ca.questions = $questions,
+            ca.updated_at = $updated_at
+        RETURN ca
+        """
+        
+        now = datetime.utcnow().isoformat()
+        await session.run(update_query, 
+                         control_id=control_id, 
+                         organization_id=organization_id,
+                         questions=json.dumps(assessment_questions),
+                         updated_at=now)
+    else:
+        # Create new assessment if it doesn't exist
+        await create_control_assessment_for_organization(session, control_id, organization_id)
+
+
+@router.put("/control-assessment/{assessment_id}/answers")
+async def save_assessment_answers(
+    assessment_id: str,
+    data: dict,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Save assessment answers with organization-specific logic.
+    This endpoint updates the assessment with answers and calculates effectiveness.
+    """
+    questions = data.get("questions", [])
+    control_rating = data.get("control_rating", "Not Assessed")
+    
+    if not questions:
+        raise HTTPException(status_code=400, detail="Questions data is required")
+    
+    # Verify assessment exists and belongs to user's organization
+    verify_query = """
+    MATCH (ca:assessment {id: $assessment_id})
+    MATCH (o:organization {id: $org_id})-[:HAS_CONTROL_ASSESSMENT]->(ca)
+    RETURN ca
+    """
+    result = await session.run(verify_query, 
+                              assessment_id=assessment_id, 
+                              org_id=current_user.get("org_id"))
+    if not await result.single():
+        raise HTTPException(status_code=404, detail="Assessment not found or access denied")
+    
+    # Calculate effectiveness percentage
+    total_weight = sum(q.get("weight", 1) for q in questions)
+    scored_weight = sum(q.get("weight", 1) for q in questions if q.get("answer"))
+    effectiveness = round((scored_weight / total_weight) * 100, 2) if total_weight > 0 else 0.0
+    
+    # Determine compliance status based on effectiveness
+    if effectiveness >= 80:
+        compliance_status = "Compliant"
+    elif effectiveness >= 50:
+        compliance_status = "Partially Compliant"
+    else:
+        compliance_status = "Non-Compliant"
+    
+    # Update assessment
+    now = datetime.utcnow().isoformat()
+    update_query = """
+    MATCH (ca:assessment {id: $assessment_id})
+    SET ca.questions = $questions,
+        ca.control_rating = $control_rating,
+        ca.compliance_status = $compliance_status,
+        ca.effectiveness_percentage = $effectiveness_percentage,
+        ca.updated_at = $updated_at
+    RETURN ca
+    """
+    
+    result = await session.run(update_query,
+                              assessment_id=assessment_id,
+                              questions=json.dumps(questions),
+                              control_rating=control_rating,
+                              compliance_status=compliance_status,
+                              effectiveness_percentage=effectiveness,
+                              updated_at=now)
+    
+    record = await result.single()
+    if not record:
+        raise HTTPException(status_code=500, detail="Failed to update assessment")
+    
+    updated_assessment = dict(record["ca"])
+    updated_assessment["questions"] = json.loads(updated_assessment["questions"])
+    
+    return {
+        "message": "Assessment answers saved successfully",
+        "assessment": updated_assessment,
+        "effectiveness_percentage": effectiveness,
+        "compliance_status": compliance_status
+    }
+
+
+@router.get("/control-assessment/control/{control_id}/questions")
+async def get_control_questions(
+    control_id: str,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get all questions attached to a specific control.
+    """
+    query = """
+    MATCH (c:control {id: $control_id})
+    OPTIONAL MATCH (cq:control_question)-[:HAS_QUESTION]->(c)
+    RETURN c, collect(cq) as control_questions
+    """
+    result = await session.run(query, control_id=control_id)
+    record = await result.single()
+    
+    if not record:
+        raise HTTPException(status_code=404, detail="Control not found")
+    
+    control = dict(record["c"])
+    control_questions = record["control_questions"]
+    
+    # Extract questions from control_question nodes
+    questions = []
+    for cq in control_questions:
+        if cq:  # Check if not None
+            cq_dict = dict(cq)
+            questions_text = cq_dict.get("questions_text", [])
+            weights = cq_dict.get("weights", [])
+            for i, question_text in enumerate(questions_text):
+                questions.append({
+                    "question": question_text,
+                    "weight": weights[i] if i < len(weights) else 1
+                })
+    
+    return {
+        "control": {
+            "id": control.get("id"),
+            "control_id": control.get("control_id"),
+            "control_name": control.get("control_name"),
+            "category": control.get("category"),
+            "description": control.get("description")
+        },
+        "questions": questions,
+        "questions_count": len(questions)
     }
