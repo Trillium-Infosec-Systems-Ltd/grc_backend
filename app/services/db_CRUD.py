@@ -272,7 +272,7 @@ class GenericCRUD:
 
         return {"n": node, "id": data["id"]}
 
-    async def get_all(self, skip: int = 0, limit: int = 10, filters: dict = None):
+    async def get_all(self,skip: int = 0, limit: int = 10, filters: dict = None):
         filters = filters or {}
         where_clauses = []
         params = {"skip": skip, "limit": limit}
@@ -283,9 +283,12 @@ class GenericCRUD:
             params[param_key] = value
 
         if self.doctype == "assets":
-            where_clauses.append(f"n.{"org_id"} = ${current_user.org_id}")
+            where_clauses.append(f"n.{"org_id"} = ${self.current_user.org_id}")
 
-        where_str = where_clauses.append(f"n.{key} = ${param_key}")
+        # Build the WHERE clause string
+        where_str = ""
+        if where_clauses:
+            where_str = "WHERE " + " AND ".join(where_clauses)
 
         # Get total count
         count_query = f"""
