@@ -395,23 +395,60 @@ async def switch_organization(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    # 1. Validate if user is part of this org
-    user_orgs = current_user.get("organizations", [])
-    if org_id not in user_orgs:
+    # Get orgs from token or fetch from DB
+    user_id = current_user.get("id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User not found in token")
+
+    # Step 1: Pull full user node
+    query = "MATCH (u:users {id: $user_id}) RETURN u"
+    result = await session.run(query, user_id=user_id)
+    record = await result.single()
+    if not record:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    db_user = record["u"]
+
+    # Step 2: Validate org_id
+    org_ids = db_user.get("org_id") or []
+    if isinstance(org_ids, str):
+        org_ids = [org_ids]
+    if org_id not in org_ids:
         raise HTTPException(status_code=403, detail="User is not a member of this organization.")
 
-    # 2. Rebuild the token with updated org_id
-    updated_user_data = current_user.copy()
-    updated_user_data["org_id"] = org_id
+    # Step 3: Get organization list for dropdown
+    org_query = """
+    MATCH (o:organization)
+    WHERE o.id IN $org_ids
+    RETURN o.id as id, o.organization_name as organization_name
+    """
+    org_result = await session.run(org_query, org_ids=org_ids)
+    organizations = [{"label": r["organization_name"], "value": r["id"]} for r in await org_result.data()]
 
-    # 3. Generate new JWT
-    access_token = create_access_token(updated_user_data)
+    # Step 4: Build token payload
+    token_data = {
+        "id": db_user["id"],
+        "email": db_user["email"],
+        "role": db_user["role"],
+        "name": db_user.get("name"),
+        "username": db_user.get("username"),
+        "org_id": org_id
+    }
 
-    # 4. Return same structure as login
+    # Step 5: Generate tokens
+    access_token = create_access_token(token_data)
+    refresh_token = create_refresh_token(token_data, remember_me=False)
+
+    # Step 6: Final response matching login
     return {
         "access_token": access_token,
-        "token_type": "bearer",
-        "user": updated_user_data
+        "refresh_token": refresh_token,
+        "role": token_data["role"],
+        "name": token_data["name"],
+        "username": token_data["username"],
+        "org_id": token_data["org_id"],
+        "organizations": organizations,
+        "token_type": "bearer"
     }
 
 @router.post("/refresh")
