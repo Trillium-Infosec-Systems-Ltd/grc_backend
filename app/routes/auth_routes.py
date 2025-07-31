@@ -389,44 +389,30 @@ async def login(user: UserLogin, session: AsyncSession = Depends(get_db)):
         "token_type": "bearer"
     }
 
-@router.get("/switch-org")
+@router.post("/switch-org")
 async def switch_organization(
-    org_id: Optional[str] = Query(default=None, alias="org_id"),
+    org_id: str = Query(..., alias="org_id"),
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    if not org_id:
-        raise HTTPException(status_code=400, detail="Missing organization ID")
+    # 1. Validate if user is part of this org
+    user_orgs = current_user.get("organizations", [])
+    if org_id not in user_orgs:
+        raise HTTPException(status_code=403, detail="User is not a member of this organization.")
 
-    user_id = current_user["id"]
-    # Get user's org_id list
-    query = "MATCH (u:users {id: $user_id}) RETURN u.org_id as org_ids"
-    result = await session.run(query, user_id=user_id)
-    record = await result.single()
-    if not record:
-        raise HTTPException(status_code=404, detail="User not found")
-    org_ids = record["org_ids"] or []
-    if isinstance(org_ids, str):
-        org_ids = [org_ids]
-    if org_id not in org_ids:
-        raise HTTPException(status_code=403, detail="User does not belong to this organization")
+    # 2. Rebuild the token with updated org_id
+    updated_user_data = current_user.copy()
+    updated_user_data["org_id"] = org_id
 
-    # Issue new token with selected org_id
-    token_data = {
-        "id": user_id,
-        "email": current_user["email"],
-        "role": current_user["role"],
-        "name": current_user.get("name"),
-        "username": current_user.get("username"),
-        "org_id": org_id
-    }
-    access_token = create_access_token(token_data)
+    # 3. Generate new JWT
+    access_token = create_access_token(updated_user_data)
+
+    # 4. Return same structure as login
     return {
         "access_token": access_token,
-        "org_id": org_id,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "user": updated_user_data
     }
-
 
 @router.post("/refresh")
 async def refresh_token(body: RefreshTokenRequest):
