@@ -390,7 +390,7 @@ async def login(user: UserLogin, session: AsyncSession = Depends(get_db)):
     }
 
 @router.get("/switch-org")
-async def switch_organization(org_id: int = Query(), session: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user),Query:str):
+async def switch_organization(org_id: int = Query('',''), session: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user),Query:str):
     user_id = current_user["id"]
 
     # Get user's org_id list
