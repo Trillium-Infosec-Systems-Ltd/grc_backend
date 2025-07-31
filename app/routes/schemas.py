@@ -12,7 +12,13 @@ router = APIRouter()
 SCHEMA_DIR = os.path.join(os.path.dirname(__file__), "..", "schemas")
 @router.get("/schemas/{schema_name}/{doc_id}")
 @router.get("/schemas/{schema_name}")
-async def get_schema(schema_name: str, doc_id: str = None, db: AsyncSession = Depends(get_db),request: Request = None,):
+async def get_schema(
+    schema_name: str,
+    doc_id: str = None,
+    db: AsyncSession = Depends(get_db),
+    request: Request = None,
+    current_user: dict = Depends(get_current_user)
+):
     file_path = os.path.join(SCHEMA_DIR, f"{schema_name}.json")
 
     if not os.path.exists(file_path):
@@ -59,37 +65,40 @@ async def get_schema(schema_name: str, doc_id: str = None, db: AsyncSession = De
             control_id = doc_data.get("control_id", "")
             questions = []
 
-            # First try: fetch from control node's saved assessment
-            query = """
-                MATCH (q:control)
-                WHERE q.id = $doc_id
-                RETURN q
-            """
-            result = await crud.session.run(query, doc_id=doc_id)
-            record = await result.single()
+            # Use org_id from current_user
+            org_id = current_user.get("org_id") if current_user else None
+            
+            print('+++++++++++++++',org_id)
 
-            use_fallback = True  # Flag to determine if we need fallback
-            if record:
-                node = record.get("q")
-                if node:
-                    raw_assessment = node.get("control_assessment")
-                    if raw_assessment:
+            assessment_found = False
+            if org_id:
+                # Try to get control_assessment node for this control and org
+                assessment_query = """
+                MATCH (a:control_assessment {control_id: $control_id, organization_id: $org_id})
+                RETURN a
+                """
+                result = await db.run(assessment_query, control_id=control_id, org_id=org_id)
+                record = await result.single()
+                if record and record.get("a"):
+                    assessment = record["a"]
+                    doc_data["control_rating"] = assessment.get("control_rating")
+                    doc_data["control_compliance"] = assessment.get("control_compliance")
+                    # Parse questions if present
+                    questions_raw = assessment.get("control_assessment")
+                    if questions_raw:
                         try:
-                            questions = json.loads(raw_assessment)
-                            if isinstance(questions, list) and questions:
-                                use_fallback = False
-                            else:
-                                print("control_assessment is not a non-empty list")
-                                questions = []
-                        except json.JSONDecodeError:
-                            print("Invalid JSON in control_assessment")
+                            questions = json.loads(questions_raw) if isinstance(questions_raw, str) else questions_raw
+                        except Exception:
                             questions = []
-            # Fallback: derive questions from control_question nodes
-            if use_fallback:
+                    doc_data["control_assessment"] = questions
+                    assessment_found = True
+
+            if not assessment_found:
+                # Fallback: derive questions from control_question nodes
                 query = """
-                    MATCH (q:control_question)
-                    WHERE q.control = $control_id
-                    RETURN q
+                        MATCH (q:control_question)
+                        WHERE q.control = $control_id
+                        RETURN q
                 """
                 result = await crud.session.run(query, control_id=control_id)
                 async for record in result:
@@ -102,6 +111,7 @@ async def get_schema(schema_name: str, doc_id: str = None, db: AsyncSession = De
                         for text, weight in zip(questions_text, question_weightage)
                     ]
                     questions.extend(q_list)
+                doc_data["control_assessment"] = questions
 
         # Special handling for control_question schema
         if schema_name == "control_question":

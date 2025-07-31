@@ -13,11 +13,13 @@ from services.database import get_db
 from services.risk_calculator import compute_threat_info
 
 
+
 class GenericCRUD:
-    def __init__(self, session: AsyncSession, doctype: str):
+    def __init__(self, session: AsyncSession, doctype: str, current_user: dict = None   ):
         self.session = session
         self.schema = load_schema(doctype)
         self.doctype = doctype
+        self.current_user = current_user
 
     async def create_risks_for_asset(self, asset_data: dict):
         """
@@ -267,20 +269,12 @@ class GenericCRUD:
             await self.create_risks_for_asset(data)
 
 
-
-
-
-
-
-
-
-
         return {"n": node, "id": data["id"]}
-    async def get_all(self, skip: int = 0, limit: int = 10, filters: dict = None):
+    async def get_all(self, current_user,skip: int = 0, limit: int = 10, filters: dict = None):
         filters = filters or {}
         where_clauses = []
         params = {"skip": skip, "limit": limit}
-
+        org_id = current_user.get("org_id")
         for i, (key, value) in enumerate(filters.items()):
             param_key = f"filter_{i}"
             where_clauses.append(f"n.{key} = ${param_key}")
@@ -322,11 +316,32 @@ class GenericCRUD:
         records = await data_result.data()
 
         items = []
+        
 
         for record in records:
             node = dict(record["n"])
             relationships = record["relationships"]
+            
+            
+            
+            if self.doctype == "control":
+                control_id = node.get("control_id")
+                node["control_rating"] = "Low"
+                node["control_compliance"] = "Non-Compliant"
 
+                if org_id and control_id:
+                    assessment_query = """
+                        MATCH (a:control_assessment {control_id: $control_id, organization_id: $org_id})
+                        RETURN a
+                    """
+                    result = await self.session.run(assessment_query, control_id=control_id, org_id=org_id)
+                    record = await result.single()
+                    if record and record.get("a"):
+                        assessment = record["a"]
+                        node["control_rating"] = assessment.get("control_rating", "Low")
+                        node["control_compliance"] = assessment.get("control_compliance", "Non-Compliant")
+                
+            
             # Enhance node fields by resolving target_field values
             for field in self.schema["fields"]:
                 fieldname = field.get("fieldname")
@@ -464,6 +479,54 @@ class GenericCRUD:
             ease_of_exploitation = ease_map.get(str(data['rating']).strip(), "Unknown")
 
             data["ease_of_exploitation"] =ease_of_exploitation
+            print("++++++++++++++++++ current user id is",self.current_user.get("org_id"))
+   
+            assessment_data = {
+                "control_id": data["control_id"],
+                "organization_id": self.current_user.get("org_id"),
+                "control_assessment": data["control_assessment"],
+                "control_rating": data["rating"],
+                "control_compliance": data["compliance_status"],
+                "created_at": now,
+                "updated_at": now
+            }
+            
+        # INSERT_YOUR_CODE
+        # Check if a control_assessment node exists for this control and organization
+            check_query = """
+            MATCH (a:control_assessment {control_id: $control_id, organization_id: $organization_id})
+            RETURN a
+            """
+            result = await self.session.run(
+                check_query,
+                control_id=assessment_data["control_id"],
+                organization_id=assessment_data["organization_id"]
+            )
+            record = await result.single()
+            
+            
+
+            if not record:
+                # Create new control_assessment node
+                create_query = """
+                CREATE (a:control_assessment $assessment_data)
+                RETURN a
+                """
+                await self.session.run(create_query, assessment_data=assessment_data)
+            else:
+                # Update existing control_assessment node
+                update_query = """
+                MATCH (a:control_assessment {control_id: $control_id, organization_id: $organization_id})
+                SET a += $assessment_data
+                RETURN a
+                """
+                await self.session.run(
+                    update_query,
+                    control_id=assessment_data["control_id"],
+                    organization_id=assessment_data["organization_id"],
+                    assessment_data=assessment_data
+                )
+            
         # ✅ Generic update logic for all doctypes
         query = f"""
         MATCH (n:{self.doctype} {{id: $item_id}})
@@ -532,5 +595,16 @@ class GenericCRUD:
                     MERGE (source)-[r:{relationship_type}]->(target)
                     """
                 await self.session.run(relation_query, val=val, source_id=item_id)
+                
+                
+        if self.doctype == "assets":
+            delete_risks_query = """
+            MATCH (r:risks {associated_assets: $asset_id})
+            DETACH DELETE r
+            """
+            await self.session.run(delete_risks_query, asset_id=item_id)
+
+            asset_data = {**data, "id": item_id}
+            await self.create_risks_for_asset(asset_data)
 
         return {"n": node, "id": item_id}

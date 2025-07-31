@@ -18,7 +18,6 @@ router = APIRouter()
 async def register(user: UserCreate, session: AsyncSession = Depends(get_db),
                    current_user: dict = Depends(get_current_user)):
     # Step 1: Check if user already exists
-
     creator_role = current_user.get("role")
     target_role = user.role
 
@@ -60,7 +59,7 @@ async def register(user: UserCreate, session: AsyncSession = Depends(get_db),
     new_id = counter_record["new_id"]
     user_id = f"users-{new_id}"
 
-    # Step 3: Create User node
+    # Step 3: Create User node (org_id as list)
     create_user_query = """
     CREATE (u:users {
         id: $id,
@@ -69,6 +68,7 @@ async def register(user: UserCreate, session: AsyncSession = Depends(get_db),
         email: $email,
         password: $password,
         role: $role,
+        org_id: $org_id,
         date_of_birth: $date_of_birth,
         present_address: $present_address,
         permanent_address: $permanent_address,
@@ -77,17 +77,26 @@ async def register(user: UserCreate, session: AsyncSession = Depends(get_db),
         country: $country
     }) RETURN u
     """
+    org_ids = user.org_id or []
     await session.run(create_user_query, id=user_id, name=user.name, email=user.email,
                       password=hash_password(user.password),
-                      role=user.role, org_id=user.org_id)
+                      role=user.role, org_id=org_ids,
+                      username=user.username,
+                      date_of_birth=user.date_of_birth,
+                      present_address=user.present_address,
+                      permanent_address=user.permanent_address,
+                      city=user.city,
+                      postal_code=user.postal_code,
+                      country=user.country)
 
-    # Step 4: Create relation from User → Organization
-    relation_query = """
-    MATCH (u:users {id: $user_id})
-    MATCH (o:organization {id: $org_id})
-    MERGE (u)-[:ASSOCIATE_WITH]->(o)
-    """
-    await session.run(relation_query, user_id=user_id, org_id=user.org_id)
+    # Step 4: Create relation from User → Organizations
+    for org_id in org_ids:
+        relation_query = """
+        MATCH (u:users {id: $user_id})
+        MATCH (o:organization {id: $org_id})
+        MERGE (u)-[:ASSOCIATE_WITH]->(o)
+        """
+        await session.run(relation_query, user_id=user_id, org_id=org_id)
 
     return {"msg": "users registered successfully", "id": user_id}
 
@@ -106,9 +115,6 @@ async def update_user(user_id: str, user: UserUpdate, session: AsyncSession = De
     # Step 2: Authorization check based on user role
     creator_role = current_user.get("role")
     target_user = existing_user["u"]
-
-    # if existing_user.:
-    #     raise HTTPException(status_code=404, detail="User not found")
 
     if creator_role == "user":
         raise HTTPException(status_code=403, detail="Users cannot update other users")
@@ -173,25 +179,24 @@ async def update_user(user_id: str, user: UserUpdate, session: AsyncSession = De
         u.country = COALESCE($country, u.country)
     RETURN u
     """
-
     await session.run(update_query, user_id=user_id, **update_fields)
 
-    # Step 4: If organization is updated, update relationship
+    # Step 4: If organization is updated, update relationships
     if "org_id" in update_fields:
-        # First, remove the old relationship
+        # Remove all old relationships
         remove_relation_query = """
         MATCH (u:users {id: $user_id})-[r:ASSOCIATE_WITH]->(o:Organization)
         DELETE r
         """
         await session.run(remove_relation_query, user_id=user_id)
-
-        # Then, create the new relationship
-        add_relation_query = """
-        MATCH (u:users {id: $user_id})
-        MATCH (o:Organization {id: $org_id})
-        MERGE (u)-[:ASSOCIATE_WITH]->(o)
-        """
-        await session.run(add_relation_query, user_id=user_id, org_id=user.org_id)
+        # Add new relationships
+        for org_id in update_fields["org_id"]:
+            add_relation_query = """
+            MATCH (u:users {id: $user_id})
+            MATCH (o:Organization {id: $org_id})
+            MERGE (u)-[:ASSOCIATE_WITH]->(o)
+            """
+            await session.run(add_relation_query, user_id=user_id, org_id=org_id)
 
     return {"msg": "User updated successfully", "id": user_id}
 
@@ -345,13 +350,29 @@ async def login(user: UserLogin, session: AsyncSession = Depends(get_db)):
     if not verify_password(user.password, db_user["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    org_ids = db_user.get("org_id") or []
+    if isinstance(org_ids, str):
+        org_ids = [org_ids]
+    first_org_id = org_ids[0] if org_ids else None
+
+    # Get organization names for the response
+    organizations = []
+    if org_ids:
+        org_query = """
+        MATCH (o:organization)
+        WHERE o.id IN $org_ids
+        RETURN o.id as id, o.organization_name as organization_name
+        """
+        org_result = await session.run(org_query, org_ids=org_ids)
+        organizations = [{"label": r["organization_name"], "value": r["id"]} for r in await org_result.data()]
+
     token_data = {
         "id": db_user["id"],
         "email": db_user["email"],
         "role": db_user["role"],
         "name": db_user.get("name"),
         "username": db_user.get("username"),
-        "org_id": db_user.get("org_id")
+        "org_id": first_org_id
     }
 
     access_token = create_access_token(token_data)
@@ -364,6 +385,38 @@ async def login(user: UserLogin, session: AsyncSession = Depends(get_db)):
         "name": token_data["name"],
         "username": token_data["username"],
         "org_id": token_data["org_id"],
+        "organizations": organizations,
+        "token_type": "bearer"
+    }
+
+@router.post("/switch_organization")
+async def switch_organization(org_id: str, session: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    user_id = current_user["id"]
+    # Get user's org_id list
+    query = "MATCH (u:users {id: $user_id}) RETURN u.org_id as org_ids"
+    result = await session.run(query, user_id=user_id)
+    record = await result.single()
+    if not record:
+        raise HTTPException(status_code=404, detail="User not found")
+    org_ids = record["org_ids"] or []
+    if isinstance(org_ids, str):
+        org_ids = [org_ids]
+    if org_id not in org_ids:
+        raise HTTPException(status_code=403, detail="User does not belong to this organization")
+
+    # Issue new token with selected org_id
+    token_data = {
+        "id": user_id,
+        "email": current_user["email"],
+        "role": current_user["role"],
+        "name": current_user.get("name"),
+        "username": current_user.get("username"),
+        "org_id": org_id
+    }
+    access_token = create_access_token(token_data)
+    return {
+        "access_token": access_token,
+        "org_id": org_id,
         "token_type": "bearer"
     }
 

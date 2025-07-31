@@ -44,6 +44,7 @@ async def get_all_items(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     filters = dict(request.query_params)
     filters.pop("skip", None)
@@ -54,7 +55,8 @@ async def get_all_items(
         paginated_data = await crud.get_all(
             skip=skip,
             limit=limit,
-            filters=filters, # ✅ Pass user for org filtering
+            filters=filters,
+            current_user =current_user # ✅ Pass user for org filtering
         )
         if not paginated_data["items"]:
             raise HTTPException(status_code=404, detail="No items found")
@@ -72,8 +74,8 @@ async def get_item(doctype: str, item_id: str, db: AsyncSession = Depends(get_db
     return item
 
 @router.put("/data/{doctype}/{item_id}")
-async def update_item(doctype: str, item_id: str, data: dict, db: AsyncSession = Depends(get_db)):
-    crud = GenericCRUD(db, doctype)
+async def update_item(doctype: str, item_id: str, data: dict, db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    crud = GenericCRUD(db, doctype, current_user)
     updated = await crud.update(item_id, data)
     if not updated:
         raise HTTPException(404, detail="Item not found or not updated")

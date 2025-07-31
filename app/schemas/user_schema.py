@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List
 
 
 class UserCreate(BaseModel):
@@ -8,7 +8,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     role: str  # super_admin, partner_user, internal_user
-    org_id: Optional[str] = None
+    org_id: Optional[List[str]] = None
     date_of_birth: Optional[str] = None
     present_address: Optional[str] = None
     permanent_address: Optional[str] = None
@@ -23,7 +23,7 @@ class UserUpdate(BaseModel):
     email: Optional[str] = None
     # password: Optional[str] = None
     role: Optional[str] = None
-    org_id: Optional[str] = None
+    org_id: Optional[List[str]] = None
     date_of_birth: Optional[str] = None
     present_address: Optional[str] = None
     permanent_address: Optional[str] = None
@@ -42,7 +42,7 @@ class UserOut(BaseModel):
     id: str
     email: EmailStr
     role: str
-    org_id: Optional[str] = None
+    org_id: Optional[List[str]] = None
 
 
 class RefreshTokenRequest(BaseModel):
