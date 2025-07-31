@@ -9,7 +9,7 @@ from fastapi import Query
 from schemas.user_schema import UserCreate, UserLogin, UserUpdate, RefreshTokenRequest
 from services.auth_service import hash_password, verify_password, create_access_token, create_refresh_token, \
     decode_token
-
+from typing import Optional
 # router = APIRouter(prefix="/auth", tags=["Auth"])
 router = APIRouter()
 
@@ -388,11 +388,15 @@ async def login(user: UserLogin, session: AsyncSession = Depends(get_db)):
         "organizations": organizations,
         "token_type": "bearer"
     }
+async def switch_organization(
+    org_id: Optional[str] = Query(default=None, alias="org_id"),
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    if not org_id:
+        raise HTTPException(status_code=400, detail="Missing organization ID")
 
-@router.get("/switch-org")
-async def switch_organization(org_id: int = Query(''), session: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
     user_id = current_user["id"]
-
     # Get user's org_id list
     query = "MATCH (u:users {id: $user_id}) RETURN u.org_id as org_ids"
     result = await session.run(query, user_id=user_id)
