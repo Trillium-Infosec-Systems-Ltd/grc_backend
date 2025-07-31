@@ -389,7 +389,7 @@ async def login(user: UserLogin, session: AsyncSession = Depends(get_db)):
         "token_type": "bearer"
     }
 
-@router.post("/switch_organization")
+@router.post("/switch-org")
 async def switch_organization(org_id: str, session: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
     user_id = current_user["id"]
     # Get user's org_id list
