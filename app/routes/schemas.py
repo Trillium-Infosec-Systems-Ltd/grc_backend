@@ -111,6 +111,9 @@ async def get_schema(
                         for text, weight in zip(questions_text, question_weightage)
                     ]
                     questions.extend(q_list)
+                    
+                doc_data["control_rating"] = "LOW"
+                doc_data["control_compliance"] = "Non-Compliant"
                 doc_data["control_assessment"] = questions
 
         # Special handling for control_question schema
