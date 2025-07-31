@@ -389,9 +389,10 @@ async def login(user: UserLogin, session: AsyncSession = Depends(get_db)):
         "token_type": "bearer"
     }
 
-@router.post("/switch-org")
-async def switch_organization(org_id: str, session: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
+@router.get("/switch-org")
+async def switch_organization(org_id: int = Query(), session: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user),Query:str):
     user_id = current_user["id"]
+
     # Get user's org_id list
     query = "MATCH (u:users {id: $user_id}) RETURN u.org_id as org_ids"
     result = await session.run(query, user_id=user_id)
