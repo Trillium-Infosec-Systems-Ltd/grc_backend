@@ -71,6 +71,7 @@ async def get_schema(
             print('+++++++++++++++',org_id)
 
             assessment_found = False
+            print(control_id)
             if org_id:
                 # Try to get control_assessment node for this control and org
                 assessment_query = """
@@ -81,8 +82,10 @@ async def get_schema(
                 record = await result.single()
                 if record and record.get("a"):
                     assessment = record["a"]
-                    doc_data["control_rating"] = assessment.get("control_rating")
-                    doc_data["control_compliance"] = assessment.get("control_compliance")
+
+                    print("i am here bro")
+                    doc_data["rating"] = assessment.get("control_rating")
+                    doc_data["compliance_status"] = assessment.get("control_compliance")
                     # Parse questions if present
                     questions_raw = assessment.get("control_assessment")
                     if questions_raw:
@@ -93,7 +96,9 @@ async def get_schema(
                     doc_data["control_assessment"] = questions
                     assessment_found = True
 
+
             if not assessment_found:
+                print("no assessment found")
                 # Fallback: derive questions from control_question nodes
                 query = """
                         MATCH (q:control_question)
@@ -112,9 +117,11 @@ async def get_schema(
                     ]
                     questions.extend(q_list)
                     
-                doc_data["control_rating"] = "LOW"
-                doc_data["control_compliance"] = "Non-Compliant"
+                doc_data["rating"] = "LOW"
+                doc_data["compliance_status"] = "Non-Compliant"
                 doc_data["control_assessment"] = questions
+                
+                print("i am here on the bottom")
 
         # Special handling for control_question schema
         if schema_name == "control_question":

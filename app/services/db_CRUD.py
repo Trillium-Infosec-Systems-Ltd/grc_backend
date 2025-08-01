@@ -326,9 +326,7 @@ class GenericCRUD:
             
             if self.doctype == "control":
                 control_id = node.get("control_id")
-                node["control_rating"] = "Low"
-                node["control_compliance"] = "Non-Compliant"
-
+                control_assesment_flag = False
                 if org_id and control_id:
                     assessment_query = """
                         MATCH (a:control_assessment {control_id: $control_id, organization_id: $org_id})
@@ -337,9 +335,11 @@ class GenericCRUD:
                     result = await self.session.run(assessment_query, control_id=control_id, org_id=org_id)
                     record = await result.single()
                     if record and record.get("a"):
+                        print("record is there actually")
                         assessment = record["a"]
-                        node["control_rating"] = assessment.get("control_rating", "Low")
-                        node["control_compliance"] = assessment.get("control_compliance", "Non-Compliant")
+                        node["rating"] = assessment.get("control_rating", "Low")
+                        node["compliance_status"] = assessment.get("control_compliance", "Non-Compliant")
+                        control_assesment_flag = True
                 
             
             # Enhance node fields by resolving target_field values
@@ -370,6 +370,16 @@ class GenericCRUD:
                     node[fieldname] = matched_nodes[0].get(target_field) if matched_nodes else None
                 elif fieldtype == "MultiLink":
                     node[fieldname] = ", ".join([n.get(target_field) for n in matched_nodes if target_field in n])
+                if  control_assesment_flag:
+                    print("control_Assessed")
+                else:
+                    print("control not Assessed")
+                    
+                    node["rating"] =  "Low"
+                    node["compliance_status"] = "Non-Compliant"
+    
+                    
+                    
 
             items.append({
                 "node": node,
