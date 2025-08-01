@@ -512,6 +512,17 @@ async def get_threat_info(threat_id: str ,asset_value: str = Query(...), db: Asy
 
 #     except Exception as e:
 #         raise HTTPException(status_code=500, detail=f"Failed to process file: {str(e)}")
+import math
+def sanitize_dict_values(obj, replace_with=None):
+    if isinstance(obj, dict):
+        return {k: sanitize_dict_values(v, replace_with) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_dict_values(i, replace_with) for i in obj]
+    elif isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return replace_with
+    return obj
+
 
 @router.post("/bulk_upload/{doctype}")
 async def bulk_upload_nodes(
@@ -522,7 +533,7 @@ async def bulk_upload_nodes(
     try:
         contents = await file.read()
 
-        # Parse file
+        # Parse and sanitize file
         if file.filename.endswith(".csv"):
             df = pd.read_csv(io.BytesIO(contents))
         elif file.filename.endswith(".xlsx"):
@@ -530,12 +541,13 @@ async def bulk_upload_nodes(
         else:
             raise HTTPException(status_code=400, detail="Unsupported file format")
 
+        # Replace NaN with None
+        df = df.where(pd.notnull(df), None)
+
         schema = load_schema(doctype)
         field_map = {f["label"]: f["fieldname"] for f in schema["fields"]}
         required_fields = [f["fieldname"] for f in schema["fields"] if f.get("required")]
         linked_fields = [f["fieldname"] for f in schema["fields"] if f.get("fieldtype") in ["Link", "MultiLink"]]
-
-        print("----------------" ,linked_fields)
 
         created = []
         errors = []
@@ -544,9 +556,6 @@ async def bulk_upload_nodes(
             try:
                 # Step 1: Map label -> fieldname
                 data = {field_map.get(k, k): v for k, v in row.items() if k in field_map}
-
-                print(data)
-
 
                 # Step 2: Validate required fields
                 for field in required_fields:
@@ -568,22 +577,19 @@ async def bulk_upload_nodes(
                 now = datetime.utcnow().isoformat()
                 data["created_at"] = now
                 data["updated_at"] = now
+
+                # Step 3.1: Clean MultiLink fields
                 for field in schema["fields"]:
                     if field.get("fieldtype") != "MultiLink":
                         continue
-
                     fieldname = field.get("fieldname")
-
                     if fieldname not in data or not data[fieldname]:
                         continue
-
-                    # Ensure string, split by comma, strip spaces
                     raw_value = str(data[fieldname])
                     values = [v.strip() for v in raw_value.split(",") if v.strip()]
-
                     data[fieldname] = values
 
-                # Step 3.5: Resolve linked fields to IDs
+                # Step 3.5: Resolve Link/MultiLink fields to IDs
                 for field in schema["fields"]:
                     if field.get("fieldtype") not in ["Link", "MultiLink"]:
                         continue
@@ -591,14 +597,12 @@ async def bulk_upload_nodes(
                     if fname not in data or not data[fname]:
                         continue
                     target_doctype = field["link_to"]
-                    target_field = field.get("target_field", "id")  # default fallback
+                    target_field = field.get("target_field", "id")
                     raw_values = data[fname]
                     if not isinstance(raw_values, list):
                         raw_values = [v.strip() for v in str(raw_values).split(",") if v.strip()]
 
-
                     resolved_ids = []
-
                     for val in raw_values:
                         match_query = f"""
                         MATCH (n:{target_doctype} {{{target_field}: $val}})
@@ -612,24 +616,19 @@ async def bulk_upload_nodes(
 
                     data[fname] = resolved_ids[0] if field["fieldtype"] == "Link" else resolved_ids
 
-                # Save relationships for later creation
+                # Step 4: Build relationships list
                 relationships = []
-
                 for field in schema["fields"]:
                     if field.get("fieldtype") not in ["Link", "MultiLink"]:
                         continue
-
                     fname = field["fieldname"]
                     if fname not in data or not data[fname]:
                         continue
                     target_doctype = field["link_to"]
                     relationship_type = field.get("relationship_type", "RELATED_TO").upper()
                     direction = field.get("relationship_direction", "outgoing")
-                    target_field = "id"  # after resolving, we use ID
-
-                    values = data[fname]
-                    if not isinstance(values, list):
-                        values = [values]
+                    target_field = "id"
+                    values = data[fname] if isinstance(data[fname], list) else [data[fname]]
 
                     relationships.append({
                         "fieldname": fname,
@@ -640,7 +639,10 @@ async def bulk_upload_nodes(
                         "target_field": target_field
                     })
 
-                # Step 4: Create node
+                # ✅ Final sanitize before save to Neo4j
+                data = sanitize_dict_values(data, replace_with=None)
+
+                # Step 5: Create node
                 create_query = f"""
                 CREATE (n:{doctype} $data)
                 RETURN n
@@ -649,7 +651,7 @@ async def bulk_upload_nodes(
                 record = await result.single()
                 node = record["n"]
 
-                # Step 5: Create relationships
+                # Step 6: Create relationships
                 for rel in relationships:
                     for val in rel["values"]:
                         if rel["direction"] == "incoming":
@@ -684,6 +686,7 @@ async def bulk_upload_nodes(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to process file: {str(e)}")
+
 
 
 
