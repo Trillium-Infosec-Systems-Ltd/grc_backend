@@ -6,8 +6,9 @@
       "fieldtype": "Link",
       "label": "Control",
       "link_to": "control",
-      "target_field":"control_name",
+      "target_field":"control_id",
       "relationship_direction":"incoming",
+      "relationship_type":"has_question",
       "display_on_frontend": false,
       "span": 24,
       "required": true

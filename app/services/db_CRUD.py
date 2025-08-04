@@ -321,9 +321,9 @@ class GenericCRUD:
         for record in records:
             node = dict(record["n"])
             relationships = record["relationships"]
-            
-            
-            
+
+
+
             if self.doctype == "control":
                 control_id = node.get("control_id")
                 control_assesment_flag = False
@@ -370,13 +370,15 @@ class GenericCRUD:
                     node[fieldname] = matched_nodes[0].get(target_field) if matched_nodes else None
                 elif fieldtype == "MultiLink":
                     node[fieldname] = ", ".join([n.get(target_field) for n in matched_nodes if target_field in n])
-                if  control_assesment_flag:
-                    print("control_Assessed")
-                else:
-                    print("control not Assessed")
-                    
-                    node["rating"] =  "Low"
-                    node["compliance_status"] = "Non-Compliant"
+
+                if self.doctype == "control":
+                    if  control_assesment_flag:
+                        print("control_Assessed")
+                    else:
+                        print("control not Assessed")
+
+                        node["rating"] =  "Low"
+                        node["compliance_status"] = "Non-Compliant"
     
                     
                     

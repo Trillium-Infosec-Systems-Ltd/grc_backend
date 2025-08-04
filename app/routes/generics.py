@@ -533,7 +533,6 @@ async def bulk_upload_nodes(
     try:
         contents = await file.read()
 
-        # Parse and sanitize file
         if file.filename.endswith(".csv"):
             df = pd.read_csv(io.BytesIO(contents))
         elif file.filename.endswith(".xlsx"):
@@ -541,141 +540,162 @@ async def bulk_upload_nodes(
         else:
             raise HTTPException(status_code=400, detail="Unsupported file format")
 
-        # Replace NaN with None
-        df = df.where(pd.notnull(df), None)
+        df = df.where(pd.notnull(df), None)  # Replace NaN with None
 
         schema = load_schema(doctype)
         field_map = {f["label"]: f["fieldname"] for f in schema["fields"]}
         required_fields = [f["fieldname"] for f in schema["fields"] if f.get("required")]
-        linked_fields = [f["fieldname"] for f in schema["fields"] if f.get("fieldtype") in ["Link", "MultiLink"]]
 
         created = []
         errors = []
 
-        for index, row in df.iterrows():
-            try:
-                # Step 1: Map label -> fieldname
-                data = {field_map.get(k, k): v for k, v in row.items() if k in field_map}
+        if doctype == "control_question":
+            controls_data = {}
+            for index, row in df.iterrows():
+                control = row.get("Control", "").strip()
+                question = row.get("Questions", "").strip()
+                weightage = row.get("Weightage", 1)
 
-                # Step 2: Validate required fields
-                for field in required_fields:
-                    if not data.get(field):
-                        raise ValueError(f"Missing required field: {field}")
+                if not control or not question:
+                    continue
 
-                # Step 3: Generate ID
-                id_query = """
-                MERGE (c:Counter {doctype: $doctype})
-                ON CREATE SET c.current = 1
-                ON MATCH SET c.current = c.current + 1
-                RETURN c.current AS new_id
-                """
-                result = await db.run(id_query, doctype=doctype)
-                record = await result.single()
-                new_id = record["new_id"]
-                data["id"] = f"{doctype.lower()}-{new_id}"
+                try:
+                    weightage = float(weightage)
+                except (ValueError, TypeError):
+                    weightage = 1.0
 
-                now = datetime.utcnow().isoformat()
-                data["created_at"] = now
-                data["updated_at"] = now
+                if control not in controls_data:
+                    controls_data[control] = []
 
-                # Step 3.1: Clean MultiLink fields
-                for field in schema["fields"]:
-                    if field.get("fieldtype") != "MultiLink":
-                        continue
-                    fieldname = field.get("fieldname")
-                    if fieldname not in data or not data[fieldname]:
-                        continue
-                    raw_value = str(data[fieldname])
-                    values = [v.strip() for v in raw_value.split(",") if v.strip()]
-                    data[fieldname] = values
+                controls_data[control].append({
+                    "question": question,
+                    "wheightage": weightage
+                })
 
-                # Step 3.5: Resolve Link/MultiLink fields to IDs
-                for field in schema["fields"]:
-                    if field.get("fieldtype") not in ["Link", "MultiLink"]:
-                        continue
-                    fname = field["fieldname"]
-                    if fname not in data or not data[fname]:
-                        continue
-                    target_doctype = field["link_to"]
-                    target_field = field.get("target_field", "id")
-                    raw_values = data[fname]
-                    if not isinstance(raw_values, list):
-                        raw_values = [v.strip() for v in str(raw_values).split(",") if v.strip()]
+            from services.db_CRUD import GenericCRUD
+            crud = GenericCRUD(db, "control_question")
 
-                    resolved_ids = []
-                    for val in raw_values:
-                        match_query = f"""
-                        MATCH (n:{target_doctype} {{{target_field}: $val}})
-                        RETURN n.id AS id
-                        """
-                        result = await db.run(match_query, val=val)
-                        record = await result.single()
-                        if not record:
-                            raise ValueError(f"{target_doctype} not found where {target_field} = '{val}'")
-                        resolved_ids.append(record["id"])
+            for control_name, question_list in controls_data.items():
+                try:
+                    match_query = """
+                    MATCH (c:control {control_id: $val})
+                    RETURN c.id AS id
+                    """
+                    result = await db.run(match_query, val=control_name)
+                    record = await result.single()
+                    if not record:
+                        raise ValueError(f"Control not found where control_name = '{control_name}'")
 
-                    data[fname] = resolved_ids[0] if field["fieldtype"] == "Link" else resolved_ids
+                    control_id = record["id"]
 
-                # Step 4: Build relationships list
-                relationships = []
-                for field in schema["fields"]:
-                    if field.get("fieldtype") not in ["Link", "MultiLink"]:
-                        continue
-                    fname = field["fieldname"]
-                    if fname not in data or not data[fname]:
-                        continue
-                    target_doctype = field["link_to"]
-                    relationship_type = field.get("relationship_type", "RELATED_TO").upper()
-                    direction = field.get("relationship_direction", "outgoing")
-                    target_field = "id"
-                    values = data[fname] if isinstance(data[fname], list) else [data[fname]]
+                    data = {
+                        "control_id": control_id,
+                        "question": question_list
+                    }
 
-                    relationships.append({
-                        "fieldname": fname,
-                        "values": values,
-                        "target_doctype": target_doctype,
-                        "relationship_type": relationship_type,
-                        "direction": direction,
-                        "target_field": target_field
-                    })
+                    created_node = await crud.create(data)
+                    created.append(created_node["id"])
 
-                # ✅ Final sanitize before save to Neo4j
-                data = sanitize_dict_values(data, replace_with=None)
+                except Exception as e:
+                    errors.append({"control": control_name, "error": str(e)})
 
-                # Step 5: Create node
-                create_query = f"""
-                CREATE (n:{doctype} $data)
-                RETURN n
-                """
-                result = await db.run(create_query, data=data)
-                record = await result.single()
-                node = record["n"]
+        else:
+            for index, row in df.iterrows():
+                try:
+                    data = {field_map.get(k, k): v for k, v in row.items() if k in field_map}
 
-                # Step 6: Create relationships
-                for rel in relationships:
-                    for val in rel["values"]:
-                        if rel["direction"] == "incoming":
-                            relation_query = f"""
-                            MATCH (target:{rel["target_doctype"]} {{id: $val}})
-                            MATCH (source:{doctype} {{id: $source_id}})
-                            MERGE (target)-[:{rel["relationship_type"]}]->(source)
+                    for field in required_fields:
+                        if not data.get(field):
+                            raise ValueError(f"Missing required field: {field}")
+
+                    id_query = """
+                    MERGE (c:Counter {doctype: $doctype})
+                    ON CREATE SET c.current = 1
+                    ON MATCH SET c.current = c.current + 1
+                    RETURN c.current AS new_id
+                    """
+                    result = await db.run(id_query, doctype=doctype)
+                    record = await result.single()
+                    new_id = record["new_id"]
+                    data["id"] = f"{doctype.lower()}-{new_id}"
+
+                    now = datetime.utcnow().isoformat()
+                    data["created_at"] = now
+                    data["updated_at"] = now
+
+                    relationships = []
+
+                    for field in schema["fields"]:
+                        if field.get("fieldtype") == "MultiLink":
+                            fname = field["fieldname"]
+                            if fname in data and data[fname]:
+                                data[fname] = [v.strip() for v in str(data[fname]).split(",") if v.strip()]
+
+                    for field in schema["fields"]:
+                        if field.get("fieldtype") not in ["Link", "MultiLink"]:
+                            continue
+                        fname = field["fieldname"]
+                        if fname not in data or not data[fname]:
+                            continue
+                        target_doctype = field["link_to"]
+                        target_field = field.get("target_field", "id")
+                        raw_values = data[fname] if isinstance(data[fname], list) else [v.strip() for v in str(data[fname]).split(",") if v.strip()]
+
+                        resolved_ids = []
+                        for val in raw_values:
+                            match_query = f"""
+                            MATCH (n:{target_doctype} {{{target_field}: $val}})
+                            RETURN n.id AS id
                             """
-                        else:
-                            relation_query = f"""
-                            MATCH (target:{rel["target_doctype"]} {{id: $val}})
-                            MATCH (source:{doctype} {{id: $source_id}})
-                            MERGE (source)-[:{rel["relationship_type"]}]->(target)
-                            """
-                        await db.run(relation_query, val=val, source_id=data["id"])
+                            result = await db.run(match_query, val=val)
+                            record = await result.single()
+                            if not record:
+                                raise ValueError(f"{target_doctype} not found where {target_field} = '{val}'")
+                            resolved_ids.append(record["id"])
 
-                if doctype == "assets":
-                    crud = GenericCRUD(db, doctype)
-                    await crud.create_risks_for_asset(data)
+                        data[fname] = resolved_ids[0] if field["fieldtype"] == "Link" else resolved_ids
 
-                created.append(data["id"])
+                        relationships.append({
+                            "fieldname": fname,
+                            "values": resolved_ids,
+                            "target_doctype": target_doctype,
+                            "relationship_type": field.get("relationship_type", "RELATED_TO"),
+                            "direction": field.get("relationship_direction", "outgoing")
+                        })
 
-            except Exception as e:
-                errors.append({"row": index + 2, "error": str(e)})
+                    data = sanitize_dict_values(data, replace_with=None)
+
+                    create_query = f"""
+                    CREATE (n:{doctype} $data)
+                    RETURN n
+                    """
+                    await db.run(create_query, data=data)
+
+                    for rel in relationships:
+                        for val in rel["values"]:
+                            if rel["direction"] == "incoming":
+                                query = f"""
+                                MATCH (target:{rel["target_doctype"]} {{id: $val}})
+                                MATCH (source:{doctype} {{id: $source_id}})
+                                MERGE (target)-[:{rel["relationship_type"]}]->(source)
+                                """
+                            else:
+                                query = f"""
+                                MATCH (target:{rel["target_doctype"]} {{id: $val}})
+                                MATCH (source:{doctype} {{id: $source_id}})
+                                MERGE (source)-[:{rel["relationship_type"]}]->(target)
+                                """
+                            await db.run(query, val=val, source_id=data["id"])
+
+                    if doctype == "assets":
+                        from services.db_CRUD import GenericCRUD
+                        crud = GenericCRUD(db, doctype)
+                        await crud.create_risks_for_asset(data)
+
+                    created.append(data["id"])
+
+                except Exception as e:
+                    errors.append({"row": index + 2, "error": str(e)})
 
         return {
             "created_count": len(created),
@@ -686,7 +706,6 @@ async def bulk_upload_nodes(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to process file: {str(e)}")
-
 
 
 
@@ -754,3 +773,62 @@ async def compute_threat_info(threat_id: str, asset_value: str, db: AsyncSession
         "ease_of_exploitation": ease_of_exploitation,
         "risk": risk
     }
+    
+    
+# @app.post("/upload-control-questions-raw/")
+# async def upload_control_questions_raw(file: UploadFile = File(...)):
+#     """
+#     Alternative approach using raw CSV parsing without pandas
+#     """
+#     import csv
+    
+#     if not file.filename.endswith('.csv'):
+#         raise HTTPException(status_code=400, detail="File must be a CSV")
+    
+#     try:
+#         contents = await file.read()
+#         csv_string = contents.decode('utf-8')
+        
+#         # Parse CSV
+#         csv_reader = csv.DictReader(io.StringIO(csv_string))
+        
+#         # Group data by control
+#         controls_data = {}
+        
+#         for row in csv_reader:
+#             control = row.get('Control', '').strip()
+#             question = row.get('Questions', '').strip()
+#             weightage = row.get('Weightage', '0')
+            
+#             # Skip empty controls or questions
+#             if not control or not question:
+#                 continue
+            
+#             # Convert weightage to float
+#             try:
+#                 weightage = float(weightage)
+#             except (ValueError, TypeError):
+#                 weightage = 0.0
+            
+#             # Initialize control if not exists
+#             if control not in controls_data:
+#                 controls_data[control] = []
+            
+#             controls_data[control].append({
+#                 "question": question,
+#                 "weightage": weightage
+#             })
+        
+#         # Format the result
+#         result = []
+#         for control_id, questions in controls_data.items():
+#             result.append({
+#                 "control": control_id,
+#                 "questions": questions,
+#                 "control_questions_no": len(questions)
+#             })
+        
+#         return JSONResponse(content=result)
+        
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")  
