@@ -20,6 +20,20 @@ import os
 
 router = APIRouter()
 
+
+import math
+
+def sanitize_for_json(obj):
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    elif isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(i) for i in obj]
+    return obj
+
 @router.post("/data/{doctype}")
 async def create_item(
     doctype: str,
@@ -45,7 +59,7 @@ async def get_all_items(
     limit: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
-):
+    ):
     filters = dict(request.query_params)
     filters.pop("skip", None)
     filters.pop("limit", None)
@@ -56,14 +70,15 @@ async def get_all_items(
             skip=skip,
             limit=limit,
             filters=filters,
-            current_user =current_user # ✅ Pass user for org filtering
+            current_user=current_user
         )
         if not paginated_data["items"]:
             raise HTTPException(status_code=404, detail="No items found")
-        return paginated_data
+
+        return sanitize_for_json(paginated_data)
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.get("/data/{doctype}/{item_id}")
 async def get_item(doctype: str, item_id: str, db: AsyncSession = Depends(get_db)):

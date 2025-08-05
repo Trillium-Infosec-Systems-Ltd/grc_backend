@@ -6,6 +6,36 @@ from neo4j import AsyncSession  # or from your actual Neo4j async client
 from routes.auth_routes import get_user_by_id
 from fastapi import Request# adjust path as needed
 from services.dependencies import get_current_user
+import math
+from neo4j.graph import Node, Relationship
+
+def sanitize_for_json(obj):
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    
+    elif isinstance(obj, list):
+        return [sanitize_for_json(item) for item in obj]
+
+    elif isinstance(obj, float):
+        # Convert NaN/inf to None (JSON-compliant)
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+
+    elif isinstance(obj, Node):
+        # Convert Neo4j Node to plain dict
+        return sanitize_for_json(dict(obj))
+
+    elif isinstance(obj, Relationship):
+        # Convert Neo4j Relationship to plain dict
+        return sanitize_for_json(dict(obj))
+
+    # Optional: handle other Neo4j types if needed
+    elif hasattr(obj, "__dict__"):
+        # Generic object fallback (careful with circular refs)
+        return sanitize_for_json(vars(obj))
+
+    return obj
 
 router = APIRouter()
 
@@ -132,19 +162,21 @@ async def get_schema(
                 {"question": q, "wheightage": weights[i] if i < len(weights) else 0}
                 for i, q in enumerate(questions_text)
             ]
-            doc_data["question"] = question_list
+            doc_data["question"] = sanitize_for_json(question_list)
 
-
+            doc_data = sanitize_for_json(doc_data)
     # Inject default values into schema
     for field in schema.get("fields", []):
         # import pdb;pdb.set_trace()
         fieldname = field.get("fieldname")
         if fieldname == "control_assessment":
-            field["default_value"] = questions
+            field["default_value"] = sanitize_for_json(questions)
         else:
-            field["default_value"] = doc_data.get(fieldname)
+            field["default_value"] = sanitize_for_json(doc_data.get(fieldname))
 
 
-    schema["relationships"] = relationships
-
-    return schema
+    schema["relationships"] = sanitize_for_json(relationships)
+    schema["data"] = sanitize_for_json(doc_data)
+    sanitized_schema = sanitize_for_json(schema)
+    print("schema:", sanitized_schema)
+    return sanitized_schema

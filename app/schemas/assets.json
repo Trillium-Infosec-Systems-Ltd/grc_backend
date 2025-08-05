@@ -19,14 +19,13 @@
       "fieldtype": "Data",
       "label": "Asset ID",
       "default_label": true,
-      "required": false,
+      "required": true,
       "display_on_frontend": true,
       "span": 12,
       "validation": {
         "min_length": 2,
         "max_length": 100
-      },
-      "hidden": true
+      }
     },
     {
       "fieldname": "type",
@@ -49,16 +48,13 @@
     },
     {
       "fieldname": "owner",
-      "fieldtype": "Link",
+      "fieldtype": "Data",
       "label": "Owner",
-      "link_to": "users",
-      "target_field":"name",
-      "relationship_direction":"incoming",
-      "relationship_type":"owns",
       "span": 12,
       "default_label": false,
-      "display_on_frontend": false,
-      "required": true
+      "display_on_frontend": true,
+      "required": true,
+      "data_field": "owner"
     },
     {
       "fieldname": "environment",
@@ -81,7 +77,8 @@
       "relationship_type":"owns",
       "display_on_frontend": false,
       "span": 12,
-      "required": false
+      "required": false,
+      "data_field": "department"
     },
      {
       "fieldname": "ip_hostname",
@@ -224,7 +221,8 @@
       "relation_direction": "outgoing",
       "display_on_frontend": false,
       "required": false,
-      "span": 12
+      "span": 12,
+      "data_field": "security_controls"
     },
     {
       "fieldname": "update",

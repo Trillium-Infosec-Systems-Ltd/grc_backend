@@ -16,12 +16,8 @@
       },
       {
         "fieldname": "owner",
-        "fieldtype": "Link",
+        "fieldtype": "Data",
         "label": "Owner",
-        "link_to": "users",
-        "target_field": "name",
-        "relationship_type": "owns",
-        "relationship_direction": "incoming",
         "required": true,
         "default_label": false,
         "display_on_frontend": true,
@@ -50,6 +46,18 @@
         "span": 12
       },
       {
+      "fieldname": "security_controls",
+      "fieldtype": "MultiLink",
+      "label": "Security Controls Categories Present",
+      "link_to": "control",
+      "target_field":"control_id",
+      "relationship_type": "HAS_CONTROL",
+      "relation_direction": "outgoing",
+      "display_on_frontend": true,
+      "required": true,
+      "span": 12
+    },
+      {
         "fieldname": "created_at",
         "fieldtype": "Datetime",
         "label": "Created at",
@@ -74,4 +82,5 @@
 
 
 
+ 
  
