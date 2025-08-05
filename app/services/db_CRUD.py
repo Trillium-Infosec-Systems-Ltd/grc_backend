@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends
 from services.database import get_db
 # from routes.generics import compute_threat_info
 from services.risk_calculator import compute_threat_info
-
+import json
+from fastapi.responses import JSONResponse
 
 
 class GenericCRUD:
@@ -387,6 +388,8 @@ class GenericCRUD:
                 "node": node,
                 "relationships": relationships
             })
+            
+        items = json.loads(json.dumps(items, allow_nan=False))
 
         return {
             "total": total,
