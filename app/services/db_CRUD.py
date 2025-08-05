@@ -389,7 +389,7 @@ class GenericCRUD:
                 "relationships": relationships
             })
             
-        items = json.loads(json.dumps(items, allow_nan=False))
+        # items = json.loads(json.dumps(items, allow_nan=False))
 
         return {
             "total": total,
