@@ -147,12 +147,23 @@ async def get_schema(
                     ]
                     questions.extend(q_list)
                     
-                doc_data["rating"] = "LOW"
+
+                doc_data["rating"] = "Low"
                 doc_data["compliance_status"] = "Non-Compliant"
                 doc_data["control_assessment"] = questions
-                
-                print("i am here on the bottom")
 
+                # Set ease_of_exploitation based on rating (case-insensitive, Low->Low, Medium->Medium, High->High)
+            ease_map = {
+                "High": "Low",
+                "Medium": "Medium",
+                "Low": "High"
+            }
+            rating_val = str(doc_data["rating"]).strip().lower()
+            print(doc_data["rating"])
+            ease_of_exploitation = ease_map.get(doc_data["rating"], "Unknown")
+            doc_data["ease_of_exploitation"] = ease_of_exploitation
+
+                
         # Special handling for control_question schema
         if schema_name == "control_question":
             questions_text = doc_data.get("questions_text", [])

@@ -390,6 +390,8 @@ async def get_threat_info(threat_id: str ,asset_value: str = Query(...), db: Asy
 #         schema = load_schema(doctype)
 #         field_map = {f["label"]: f["fieldname"] for f in schema["fields"]}
 #         required_fields = [f["fieldname"] for f in schema["fields"] if f.get("required")]
+                    # Special handling for threat: create MITIGATES relationship to relevant control(s)
+
 #         linked_fields = [f["fieldname"] for f in schema["fields"] if f.get("fieldtype") in ["Link", "MultiLink"]]
 
 #         crud = GenericCRUD(db, doctype)
@@ -622,6 +624,38 @@ async def bulk_upload_nodes(
                     now = datetime.utcnow().isoformat()
                     data["created_at"] = now
                     data["updated_at"] = now
+
+
+                    # Special handling for control: calculate ease_of_exploitation only if rating is present and not None
+                    if doctype == "control" and data.get("rating") is not None:
+                        ease_map = {
+                            "High": "Low",
+                            "Medium": "Medium",
+                            "Low": "High"
+                        }
+                        ease_of_exploitation = ease_map.get(str(data["rating"]).strip(), "Unknown")
+                        data["ease_of_exploitation"] = ease_of_exploitation
+
+                    # Special handling for vulnerability: set ease_of_exploitation from linked control's rating if available
+                    if doctype == "vulnerability":
+                        id = data.get("relevant_control_id")
+                        if id:
+                            # Try to fetch the control node's rating (fix property name in Cypher)
+                            control_query = """
+                                MATCH (c:control {control_id: $control_id})
+                                RETURN c.rating AS rating
+                            """
+                            result = await db.run(control_query, control_id=id)
+                            record = await result.single()
+                            if record and record.get("rating"):
+                                ease_map = {
+                                    "High": "Low",
+                                    "Medium": "Medium",
+                                    "Low": "High"
+                                }
+                                rating_val = str(record["rating"]).strip()
+                                ease_of_exploitation = ease_map.get(record.get("rating"), "High")
+                                data["ease_of_exploitation"] = ease_of_exploitation
 
                     relationships = []
 
