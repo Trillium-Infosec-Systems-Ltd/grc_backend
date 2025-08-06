@@ -220,6 +220,18 @@ class GenericCRUD:
         data["created_at"] = now
         data["updated_at"] = now
 
+
+        # Special handling for control: calculate ease_of_exploitation (case-insensitive)
+        if self.doctype == "control" and "rating" in data:
+            ease_map = {
+                "High": "Low",
+                "Medium": "Medium",
+                "Low": "High"
+            }
+            rating_val = str(data["rating"]).strip().lower()
+            ease_of_exploitation = ease_map.get(rating_val, "Unknown")
+            data["ease_of_exploitation"] = ease_of_exploitation
+
         # Keep control_assessment list directly in the node (if any)
         assessment_items = data.get("control_assessment", [])
         data["control_assessment"] = assessment_items
