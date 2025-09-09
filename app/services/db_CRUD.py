@@ -288,9 +288,36 @@ class GenericCRUD:
         where_clauses = []
         params = {"skip": skip, "limit": limit}
         org_id = current_user.get("org_id")
+        filterable_fields = {f["fieldname"]: f for f in self.schema["fields"] if f.get("is_filter")
+    }
         for i, (key, value) in enumerate(filters.items()):
+            if key not in filterable_fields:
+                continue  # ignore non-filterable keys
+
             param_key = f"filter_{i}"
-            where_clauses.append(f"n.{key} = ${param_key}")
+            field_info = filterable_fields[key]
+            fieldtype = field_info.get("fieldtype", "Data")
+
+            # Decide filter type based on field type
+            if fieldtype in ["Data", "LongText"]:
+                # partial match (case-insensitive)
+                where_clauses.append(f"toLower(n.{key}) CONTAINS toLower(${param_key})")
+            elif fieldtype in ["Radio", "Select"]:
+                # exact match
+                where_clauses.append(f"n.{key} = ${param_key}")
+            elif fieldtype == "Date":
+                # optional: support min/max via query params
+                if filters.get(f"{key}_min"):
+                    where_clauses.append(f"n.{key} >= ${param_key}_min")
+                    params[f"{param_key}_min"] = filters[f"{key}_min"]
+                if filters.get(f"{key}_max"):
+                    where_clauses.append(f"n.{key} <= ${param_key}_max")
+                    params[f"{param_key}_max"] = filters[f"{key}_max"]
+                continue
+            else:
+                # fallback: exact
+                where_clauses.append(f"n.{key} = ${param_key}")
+
             params[param_key] = value
 
         where_str = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""

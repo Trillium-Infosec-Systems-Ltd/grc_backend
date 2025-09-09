@@ -57,6 +57,8 @@ async def get_all_items(
     request: Request,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
+    
+    
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
     ):

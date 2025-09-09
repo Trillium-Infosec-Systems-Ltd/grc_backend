@@ -8,7 +8,8 @@
       "label": "Control Name",
       "display_on_frontend": true,
       "span": 12,
-      "required": true
+      "required": true,
+      "is_filter":true
     },
     {
       "fieldname": "control_id",
@@ -16,7 +17,8 @@
       "label": "Control ID (e.g., PR.AC-1)",
       "display_on_frontend": true,
       "span": 12,
-      "required": true
+      "required": true,
+      "is_filter":true
     },
     {
       "fieldname": "category",
@@ -24,7 +26,8 @@
       "label": "Category",
       "display_on_frontend": true,
       "span": 12,
-      "required": true
+      "required": true,
+      "is_filter":true
     },
     {
       "fieldname": "sub_category",
