@@ -26,7 +26,7 @@ async def get_link_options_service(
         for idx, (field, term) in enumerate(search_fields):
             if term:
                 param_key = f"search_term_{idx}"
-                search_clauses.append(f"toLower(n.{field}) CONTAINS toLower(${param_key})")
+                search_clauses.append(f"toLower(toString(n.{field})) CONTAINS toLower(${param_key}")
                 params[param_key] = term
         if search_clauses:
             filter_conditions.append(f"({' OR '.join(search_clauses)})")
