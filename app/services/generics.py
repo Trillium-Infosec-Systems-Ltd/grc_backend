@@ -6,7 +6,7 @@ import json
 
 
 
-async def get_link_options_service(
+async def get_link_options_service( 
     driver: AsyncDriver,
     document_type: str,
     search_fields: list[tuple[str, str]],
@@ -26,8 +26,9 @@ async def get_link_options_service(
         for idx, (field, term) in enumerate(search_fields):
             if term:
                 param_key = f"search_term_{idx}"
-                search_clauses.append(f"toLower(toString(n.{field})) CONTAINS toLower(${param_key}")
-                params[param_key] = term
+                # ✅ cast property to string before toLower()
+                search_clauses.append(f"toLower(toString(n.{field})) CONTAINS toLower(${param_key})")
+                params[param_key] = str(term)  # also cast param to string
         if search_clauses:
             filter_conditions.append(f"({' OR '.join(search_clauses)})")
 
@@ -36,8 +37,9 @@ async def get_link_options_service(
             filters_dict = json.loads(filters)
             for idx, (key, val) in enumerate(filters_dict.items()):
                 filter_key = f"filter_{idx}"
-                filter_conditions.append(f"n.{key} = ${filter_key}")
-                params[filter_key] = val
+                # ✅ cast filter fields to string too
+                filter_conditions.append(f"toString(n.{key}) = ${filter_key}")
+                params[filter_key] = str(val)
 
         where_clause = " AND ".join(filter_conditions)
         where_query = f"WHERE {where_clause}" if where_clause else ""
