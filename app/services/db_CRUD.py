@@ -292,21 +292,29 @@ class GenericCRUD:
     }
         for i, (key, value) in enumerate(filters.items()):
             if key not in filterable_fields:
-                continue  # ignore non-filterable keys
+                continue  # only allow fields marked as is_filter
 
             param_key = f"filter_{i}"
             field_info = filterable_fields[key]
             fieldtype = field_info.get("fieldtype", "Data")
 
-            # Decide filter type based on field type
+            # --- Text fields ---
             if fieldtype in ["Data", "LongText"]:
-                # partial match (case-insensitive)
-                where_clauses.append(f"toLower(n.{key}) CONTAINS toLower(${param_key})")
+                # if frontend sent a number (like control_id=7.1), don’t apply toLower
+                try:
+                    float(value)
+                    # exact numeric match
+                    where_clauses.append(f"n.{key} = ${param_key}")
+                except ValueError:
+                    # normal string → case-insensitive contains search
+                    where_clauses.append(f"toLower(toString(n.{key})) CONTAINS toLower(${param_key})")
+
+            # --- Dropdowns / Radios ---
             elif fieldtype in ["Radio", "Select"]:
-                # exact match
                 where_clauses.append(f"n.{key} = ${param_key}")
+
+            # --- Dates ---
             elif fieldtype == "Date":
-                # optional: support min/max via query params
                 if filters.get(f"{key}_min"):
                     where_clauses.append(f"n.{key} >= ${param_key}_min")
                     params[f"{param_key}_min"] = filters[f"{key}_min"]
@@ -314,13 +322,15 @@ class GenericCRUD:
                     where_clauses.append(f"n.{key} <= ${param_key}_max")
                     params[f"{param_key}_max"] = filters[f"{key}_max"]
                 continue
+
+            # --- Default fallback (exact match) ---
             else:
-                # fallback: exact
                 where_clauses.append(f"n.{key} = ${param_key}")
 
             params[param_key] = value
 
         where_str = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+
 
         # Get total count
         count_query = f"""
