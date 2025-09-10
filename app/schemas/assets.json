@@ -12,7 +12,8 @@
       "validation": {
         "min_length": 2,
         "max_length": 100
-      }
+      },
+       "is_filter":true
     },
     {
       "fieldname": "asset_id",
@@ -25,7 +26,8 @@
       "validation": {
         "min_length": 2,
         "max_length": 100
-      }
+      },
+       "is_filter":true
     },
     {
       "fieldname": "type",
@@ -54,14 +56,15 @@
       "default_label": false,
       "display_on_frontend": true,
       "required": true,
-      "data_field": "owner"
+      "data_field": "owner",
+       "is_filter":true
     },
     {
       "fieldname": "environment",
       "fieldtype": "Select",
       "label": "Environment",
       "options": ["Staging", "Dev", "Production"],
-      "required": false,
+      "required": true,
       "default_label": false,
       "span": 12,
       "display_on_frontend": false,
@@ -77,7 +80,7 @@
       "relationship_type":"owns",
       "display_on_frontend": false,
       "span": 12,
-      "required": false,
+      "required": true,
       "data_field": "department"
     },
      {
@@ -103,14 +106,15 @@
       "display_on_frontend": true,
       "is_colorful": true,
       "default": "Medium",
-      "data_field": "asset_value"
+      "data_field": "asset_value",
+       "is_filter":true
     },
     {
       "fieldname": "exposure",
       "fieldtype": "Select",
       "label": "Exposure Level",
       "options": ["Internal", "External"],
-      "required": false,
+      "required": true,
       "default_label": false,
       "span": 12,
       "display_on_frontend": false,
@@ -143,7 +147,7 @@
       "label": "Contains Sensitive Data",
       "options":[ "Yes", "No" ],
       "display_on_frontend": false,
-      "required": false,
+      "required": true,
       "span": 12,
       "default": "Yes"
     },
@@ -153,7 +157,7 @@
       "label": "Confidentiality Score",
       "options": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
       "display_on_frontend": false,
-      "required": false,
+      "required": true,
       "span": 12
     },
     {
@@ -162,7 +166,7 @@
       "label": "Integrity Score",
       "options": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
       "display_on_frontend": false,
-      "required": false,
+      "required": true,
       "span": 12
     },
     {
@@ -171,7 +175,7 @@
       "label": "Availability Score",
       "options": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
       "display_on_frontend": false,
-      "required": false,
+      "required": true,
       "span": 12
     },
     {
@@ -220,7 +224,7 @@
       "relationship_type": "HAS_CONTROL",
       "relation_direction": "outgoing",
       "display_on_frontend": false,
-      "required": false,
+      "required": true,
       "span": 12,
       "data_field": "security_controls"
     },
@@ -246,7 +250,8 @@
       "default_label": false,
       "display_on_frontend": true,
       "required": false,
-      "hidden": true
+      "hidden": true,
+       "is_filter":true
     },
     {
       "fieldname": "created_at",

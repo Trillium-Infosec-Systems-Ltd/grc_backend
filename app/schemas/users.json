@@ -13,7 +13,8 @@
         "validation": {
           "min_length": 3,
           "max_length": 100
-        }
+        },
+       "is_filter":true
       },
       {
         "fieldname": "username",
@@ -26,7 +27,8 @@
         "validation": {
           "min_length": 3,
           "max_length": 100
-        }
+        },
+       "is_filter":true
       },
       {
         "fieldname": "email",
@@ -37,7 +39,8 @@
         "span" :12,
         "validation": {
           "regex": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
-        }
+        },
+       "is_filter":true
       },
       {
         "fieldname": "role",
@@ -46,7 +49,8 @@
         "display_on_frontend":true,
         "options": ["partner", "user"],
         "span" :12,
-        "required": true
+        "required": true,
+       "is_filter":true
       },
 
       {
@@ -67,7 +71,8 @@
         "relationship_direction": "outgoing",
         "display_on_frontend":true,
         "span" :12,
-        "required": true
+        "required": true,
+       "is_filter":true
       },
       {
       "fieldname": "date_of_birth",

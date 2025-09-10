@@ -8,7 +8,8 @@
         "label": "Clause",
         "display_on_frontend": true,
         "required": true,
-        "span": 12
+        "span": 12,
+       "is_filter":true
       },
       {
         "fieldname": "clause_id",
@@ -16,7 +17,8 @@
         "label": "Clause ID",
         "display_on_frontend": true,
         "required": true,
-        "span": 12
+        "span": 12,
+       "is_filter":true
       },
       {
         "fieldname": "framework",
@@ -100,7 +102,8 @@
         "default": "Compliant",
         "display_on_frontend": true,
         "is_colorful": true,
-        "span": 12
+        "span": 12,
+       "is_filter":true
       },
       {
         "fieldname": "compliance_questions",

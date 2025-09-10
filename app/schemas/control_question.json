@@ -11,7 +11,8 @@
       "relationship_type":"has_question",
       "display_on_frontend": false,
       "span": 24,
-      "required": true
+      "required": true,
+       "is_filter":true
     },
     {
       "fieldname": "control",

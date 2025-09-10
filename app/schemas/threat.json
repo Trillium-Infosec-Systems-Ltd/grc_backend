@@ -10,7 +10,8 @@
         "required": true,
         "display_on_frontend": true,
         "span": 12,
-        "default_label": true
+        "default_label": true,
+       "is_filter":true
       },
       {
         "fieldname": "likelihood",
@@ -19,7 +20,8 @@
         "options": ["Low","Medium","High"],
         "required": true,
         "span": 12,
-        "display_on_frontend": true
+        "display_on_frontend": true,
+       "is_filter":true
       },
       {
         "fieldname": "vulnerability",
@@ -36,7 +38,8 @@
       "fetch_to": {
         "to": "/data/vulnerability",
         "path_params": ["vulnerability"]
-      }
+      },
+       "is_filter":true
       },
       {
         "fieldname": "relevant_controls",
@@ -50,7 +53,8 @@
         "disabled": true,
         "required": false,
         "span": 12,
-        "data_field": "relevant_control_id"
+        "data_field": "relevant_control_id",
+       "is_filter":true
       },
       {
         "fieldname": "created_at",

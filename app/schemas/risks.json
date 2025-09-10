@@ -92,7 +92,8 @@
       "display_on_frontend": true,
       "required_on_field": "risk_by_asset",
       "required_on_value": "Name",
-       "isFetchingData": true
+       "isFetchingData": true,
+       "is_filter":true
     },
     {
       "fieldname": "type",
@@ -113,7 +114,8 @@
         "isCall": {"risk_by_asset": "Category"},
         "to": "/data/asset_type",
         "path_params": ["type"]
-      }
+      },
+       "is_filter":true
     },
     {
       "fieldname": "asset_value",
@@ -124,7 +126,8 @@
       "span": 12,
       "required": true,
       "disabled": true,
-      "data_field": "asset_value"
+      "data_field": "asset_value",
+       "is_filter":true
     },
     {
       "fieldname": "associated_threats",
@@ -138,7 +141,8 @@
       "display_on_frontend": true,
       "required": true,
       "disabled": true,
-      "data_field": "threat_id"
+      "data_field": "threat_id",
+       "is_filter":true
 
     },
     {
@@ -150,7 +154,8 @@
       "span": 12,
       "required": false,
       "disabled": true,
-      "data_field": "likelihood"
+      "data_field": "likelihood",
+       "is_filter":true
     },
     {
       "fieldname": "related_vulnerabilities",
@@ -188,7 +193,8 @@
       "span": 12,
       "required": false,
       "disabled": true,
-      "data_field": "ease_of_exploitation"
+      "data_field": "ease_of_exploitation",
+       "is_filter":true
     },
     {
       "fieldname": "date_identified",
@@ -208,7 +214,8 @@
       "span": 12,
       "required": false,
       "disabled": true,
-      "data_field": "risk"
+      "data_field": "risk",
+       "is_filter":true
     },
     {
       "fieldname": "risk_decision",
@@ -217,7 +224,8 @@
       "options": ["Accept", "Mitigate", "Transfer", "Avoid"],
       "display_on_frontend": true,
       "span": 12,
-      "required": false
+      "required": false,
+       "is_filter":true
     },
     {
       "fieldname": "risk_description",

@@ -12,7 +12,8 @@
         "validation": {
           "min_length": 2,
           "max_length": 100
-        }
+        },
+       "is_filter":true
       },
       {
         "fieldname": "owner",
@@ -21,7 +22,8 @@
         "required": true,
         "default_label": false,
         "display_on_frontend": true,
-        "span": 12
+        "span": 12,
+       "is_filter":true
       },
       {
         "fieldname": "department",
@@ -33,7 +35,8 @@
         "relationship_direction": "incoming",
         "display_on_frontend": true,
         "required": false,
-        "span": 12
+        "span": 12,
+       "is_filter":true
       },
       {
         "fieldname": "asset_value",
@@ -43,7 +46,8 @@
         "default": "Medium",
         "display_on_frontend": true,
         "required": true,
-        "span": 12
+        "span": 12,
+       "is_filter":true
       },
       {
       "fieldname": "security_controls",
@@ -55,7 +59,8 @@
       "relation_direction": "outgoing",
       "display_on_frontend": true,
       "required": true,
-      "span": 12
+      "span": 12,
+       "is_filter":true
     },
       {
         "fieldname": "created_at",

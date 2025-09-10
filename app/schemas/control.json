@@ -45,7 +45,8 @@
       "display_on_frontend": true,
       "required": false,
       "span": 12,
-      "default": "No"
+      "default": "No",
+       "is_filter":true
     },
     {
       "fieldname": "integrity",
@@ -55,7 +56,8 @@
       "display_on_frontend": true,
       "required": false,
       "span": 12,
-      "default": "No"
+      "default": "No",
+       "is_filter":true
     },
     {
       "fieldname": "availability",
@@ -65,7 +67,8 @@
       "display_on_frontend": true,
       "required": false,
       "span": 12,
-      "default": "No"
+      "default": "No",
+       "is_filter":true
     },
     {
       "fieldname": "framework",
@@ -209,7 +212,8 @@
       "span": 12,
       "display_on_frontend": true,
       "default": "Medium",
-      "disabled":true
+      "disabled":true,
+       "is_filter":true
     },
     {
       "fieldname": "applicable_asset_category",
