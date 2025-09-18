@@ -204,6 +204,16 @@
       "display_on_frontend": false
     },
      {
+      "fieldname": "control_applicable",
+      "fieldtype": "Radio",
+      "label": "Control applicable",
+      "options":[ "Yes", "No" ],
+      "display_on_frontend": true,
+      "required": true,
+      "span": 12,
+      "default": "Yes"
+    },
+     {
       "fieldname": "rating",
       "fieldtype": "Data",
       "label": "Control Rating",
@@ -211,9 +221,11 @@
       "default_label": false,
       "span": 12,
       "display_on_frontend": true,
-      "default": "Medium",
+      "default": "Low",
       "disabled":true,
-       "is_filter":true
+       "is_filter":true,
+       "depend_on_field": "control_applicable",
+      "depend_on_value": "No"
     },
     {
       "fieldname": "applicable_asset_category",
@@ -261,15 +273,18 @@
       "options": ["Non-Compliant","Partially Compliant","Compliant" ],
       "required": false,
       "span": 24,
-      "display_on_frontend": true
+      "display_on_frontend": true,
+      "display_on_field": "control_applicable",
+      "display_on_value": "Yes"
     },
     {
       "fieldname": "control_assessment",
       "fieldtype": "question_table",
       "label": "Control Assessment",
       "span": 24,
-      "display_on_frontend": false
-
+      "display_on_frontend": false,
+      "display_on_field": "control_applicable",
+      "display_on_value": "Yes"
     }
   ]
 }
