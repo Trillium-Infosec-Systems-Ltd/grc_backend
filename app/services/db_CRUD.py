@@ -481,6 +481,23 @@ class GenericCRUD:
         result = await self.session.run(query, item_id=item_id)
         deleted = await result.single()
         return deleted["deleted_count"]
+    
+
+    async def delete_all(self):
+        """
+        Delete all nodes of this doctype.
+        Returns number of deleted items.
+        """
+        query = f"""
+        MATCH (n:{self.doctype})
+        WITH n, count(n) AS cnt
+        DETACH DELETE n
+        RETURN cnt
+        """
+        result = await self.session.run(query)
+        record = await result.single()
+
+        return record["cnt"] if record else 0
 
     async def update(self, item_id: str, data: dict):
         now = datetime.utcnow().isoformat()
@@ -590,7 +607,66 @@ class GenericCRUD:
                     organization_id=assessment_data["organization_id"],
                     assessment_data=assessment_data
                 )
+
+        if self.doctype == "control" and data.get("control_assessment") is None:
+           # Serialize
+            data["updated_at"] = now  # Already set, but reinforces clarity
+            ease_map = {
+                "High": "Low",
+                "Medium": "Medium",
+                "Low": "High"
+            }
+            ease_of_exploitation = ease_map.get(str(data['rating']).strip(), "Unknown")
+
+            data["ease_of_exploitation"] =ease_of_exploitation
+            print("++++++++++++++++++ current user id is",self.current_user.get("org_id"))
+
+            assessment_data = {
+                "control_id": data["control_id"],
+                "organization_id": self.current_user.get("org_id"),
+
+                "control_rating": data["rating"],
+                "control_compliance":"Non-Compliant",
+                "created_at": now,
+                "updated_at": now
+            }
             
+        # INSERT_YOUR_CODE
+        # Check if a control_assessment node exists for this control and organization
+            check_query = """
+            MATCH (a:control_assessment {control_id: $control_id, organization_id: $organization_id})
+            RETURN a
+            """
+            result = await self.session.run(
+                check_query,
+                control_id=assessment_data["control_id"],
+                organization_id=assessment_data["organization_id"]
+            )
+            record = await result.single()
+            
+            
+
+            if not record:
+                # Create new control_assessment node
+                create_query = """
+                CREATE (a:control_assessment $assessment_data)
+                RETURN a
+                """
+                await self.session.run(create_query, assessment_data=assessment_data)
+            else:
+                # Update existing control_assessment node
+                update_query = """
+                MATCH (a:control_assessment {control_id: $control_id, organization_id: $organization_id})
+                SET a += $assessment_data
+                RETURN a
+                """
+                await self.session.run(
+                    update_query,
+                    control_id=assessment_data["control_id"],
+                    organization_id=assessment_data["organization_id"],
+                    assessment_data=assessment_data
+                )
+        
         # ✅ Generic update logic for all doctypes
         query = f"""
         MATCH (n:{self.doctype} {{id: $item_id}})

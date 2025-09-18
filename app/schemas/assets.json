@@ -20,7 +20,7 @@
       "fieldtype": "Data",
       "label": "Asset ID",
       "default_label": true,
-      "required": true,
+      "required": false,
       "display_on_frontend": true,
       "span": 12,
       "validation": {

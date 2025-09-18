@@ -120,26 +120,44 @@ async def get_form_metadata(doctype: str):
 
 
 
+# @router.get("/csv_template/{node_type}")
+# async def generate_csv_template(node_type: str):
+#     try:
+#         schema = load_schema(node_type)
+
+#         fieldnames = [
+#             f["label"] for f in schema["fields"]
+#             if not f.get("hidden", False)
+#         ]
+
+#         output = io.StringIO()
+#         writer = csv.DictWriter(output, fieldnames=fieldnames)
+#         writer.writeheader()
+#         response = Response(content=output.getvalue(), media_type="text/csv")
+#         response.headers["Content-Disposition"] = f"attachment; filename={node_type}_template.csv"
+#         return response
+
+#     except Exception as e:
+#         return {"error": str(e)}
+
+from pathlib import Path as PathLib
+from fastapi import Path   # for API params
+
+BASE_DIR = PathLib(__file__).resolve().parent.parent.parent
+STATIC_FOLDER = BASE_DIR / "static" / "templates"
+
 @router.get("/csv_template/{node_type}")
-async def generate_csv_template(node_type: str):
-    try:
-        schema = load_schema(node_type)
+async def get_csv_template(node_type: str):
+    file_path = STATIC_FOLDER / f"{node_type}_template.xlsx"
 
-        fieldnames = [
-            f["label"] for f in schema["fields"]
-            if not f.get("hidden", False)
-        ]
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Template not found")
 
-        output = io.StringIO()
-        writer = csv.DictWriter(output, fieldnames=fieldnames)
-        writer.writeheader()
-        response = Response(content=output.getvalue(), media_type="text/csv")
-        response.headers["Content-Disposition"] = f"attachment; filename={node_type}_template.csv"
-        return response
-
-    except Exception as e:
-        return {"error": str(e)}
-
+    return FileResponse(
+        path=file_path,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=f"{node_type}_template.xlsx"
+    )
 
 
 
@@ -554,7 +572,7 @@ async def bulk_upload_nodes(
         if doctype == "control_question":
             controls_data = {}
             for index, row in df.iterrows():
-                control = row.get("Control", "").strip()
+                control = row.get("Control", "")
                 question = row.get("Questions", "").strip()
                 weightage = row.get("Weightage", 1)
 
@@ -635,6 +653,7 @@ async def bulk_upload_nodes(
                         }
                         ease_of_exploitation = ease_map.get(str(data["rating"]).strip(), "Unknown")
                         data["ease_of_exploitation"] = ease_of_exploitation
+                        
 
                     # Special handling for vulnerability: set ease_of_exploitation from linked control's rating if available
                     if doctype == "vulnerability":

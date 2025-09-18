@@ -107,6 +107,14 @@ async def delete_item(doctype: str, item_id: str, db: AsyncSession = Depends(get
     return {"detail": "Deleted successfully"}
 
 
+@router.delete("/data/{doctype}")
+async def delete_all_items(doctype: str, db: AsyncSession = Depends(get_db)):
+    crud = GenericCRUD(db, doctype)
+    count = await crud.delete_all()   # 👈 you'll implement this in GenericCRUD
 
+    if not count:
+        raise HTTPException(404, detail=f"No items found for doctype '{doctype}'")
+
+    return {"detail": f"Deleted {count} items successfully"}
 
 

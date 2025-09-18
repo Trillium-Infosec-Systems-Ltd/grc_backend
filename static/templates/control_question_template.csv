@@ -1,0 +1,21 @@
+Control,Questions,Weightage
+5.1.1,"Is there an information security policy document, or set of policies, that has been defined, approved by management, and has it been published and communicated to all employees and relevant external parties?",2
+5.1.2,"Is there a procedure for the information security policy, or policies, to be reviewed at planned intervals or if significant changes occur, and does this process ensure its continuing suitability, adequacy, and effectiveness, and is there evidence that the policy (or policies) is applied?",1
+6.1,Is there a management framework to initiate and control the implementation and operation of information security within the organisation?,1
+6.1.1,Have all information security responsibilities been defined and allocated?,0.111111111
+6.1.1,Are assets identified and defined?,0.111111111
+6.1.1,Are information security processes indentified and defined?,0.111111111
+6.1.1,Is entity responsible for each asset assigned?,0.111111111
+6.1.1,Is entity responsible for each information security process assigned?,0.111111111
+6.1.1,Are the details of this responsibility documented?,0.111111111
+6.1.1,Are authorization levels defined and documented?,0.111111111
+6.1.1,Are the appointed individuals compentent in the information security area to be able to fulfil responsibilities? ,0.111111111
+6.1.1,Are the appointed individuals given opportunities to keep up to date with developments? ,0.111111111
+6.1.1,Is coordination and oversight of information security aspects of supplier relationships identified and documented?,2
+6.1.2,Have conflicting duties and areas of responsibility been segregated to reduce opportunities for unauthorised or unintentional modification or misuse of the organisation's assets?,2
+6.1.3,Does the organisation maintain appropriate contacts with relevant authorities?,2
+6.1.4,Does the organisation maintain appropriate contact with special interest groups or other specialist security forums and professional associations?,1
+6.1.5,"Does the organisation address information security in project management, regardless of the type of project?",0.333333333
+6.1.5,Are information security objectives included in project objectives?,0.333333333
+6.1.5,Is information security risk assessment conducted at an early stage of the project to identify necessary controls?,0.333333333
+6.1.5,Is information security part of all phases of the applied project methodology?,1
