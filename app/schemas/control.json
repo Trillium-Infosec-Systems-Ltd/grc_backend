@@ -37,6 +37,17 @@
       "span": 12,
       "required": true
     },
+      {
+      "fieldname": "framework",
+      "fieldtype": "Select",
+      "label": "Framework",
+      "span": 12,
+      "options": ["NIST CSF", "ISO 27001", "PCI DSS", "HIPAA"],
+      "required": true,
+      "display_on_frontend": true,
+      "default": "NIST CSF",
+      "is_filter": true
+    },
     {
       "fieldname": "confidentiality",
       "fieldtype": "Radio",
@@ -69,17 +80,6 @@
       "span": 12,
       "default": "No",
        "is_filter":true
-    },
-    {
-      "fieldname": "framework",
-      "fieldtype": "Select",
-      "label": "Framework",
-      "span": 12,
-      "options": ["NIST CSF", "ISO 27001", "PCI DSS", "HIPAA"],
-      "required": false,
-      "hidden": true,
-      "display_on_frontend": false,
-      "default": "NIST CSF"
     },
     {
       "fieldname": "owner",
@@ -215,8 +215,9 @@
     },
      {
       "fieldname": "rating",
-      "fieldtype": "Data",
+      "fieldtype": "Select",
       "label": "Control Rating",
+      "options": ["Low", "Medium", "High"],
       "required": false,
       "default_label": false,
       "span": 12,
@@ -269,13 +270,15 @@
     {
       "fieldname": "compliance_status",
       "fieldtype": "AssessmentProgress",
+      "fieldtype_filter": "Select",
       "label": "Compliance Status",
       "options": ["Non-Compliant","Partially Compliant","Compliant" ],
       "required": false,
       "span": 24,
       "display_on_frontend": true,
       "display_on_field": "control_applicable",
-      "display_on_value": "Yes"
+      "display_on_value": "Yes",
+      "is_filter": true
     },
     {
       "fieldname": "control_assessment",
