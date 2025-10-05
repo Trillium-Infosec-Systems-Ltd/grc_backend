@@ -3,18 +3,18 @@
   "doctype": "Control",
   "fields": [
     {
-      "fieldname": "control_name",
+      "fieldname": "control_id",
       "fieldtype": "Data",
-      "label": "Control Name",
+      "label": "Control ID (e.g., PR.AC-1)",
       "display_on_frontend": true,
       "span": 12,
       "required": true,
       "is_filter":true
     },
     {
-      "fieldname": "control_id",
+      "fieldname": "control_name",
       "fieldtype": "Data",
-      "label": "Control ID (e.g., PR.AC-1)",
+      "label": "Control Name",
       "display_on_frontend": true,
       "span": 12,
       "required": true,
@@ -224,7 +224,7 @@
       "display_on_frontend": true,
       "default": "Low",
       "disabled":true,
-       "is_filter":true,
+       "is_filter":false,
        "depend_on_field": "control_applicable",
       "depend_on_value": "No"
     },
@@ -278,7 +278,7 @@
       "display_on_frontend": true,
       "display_on_field": "control_applicable",
       "display_on_value": "Yes",
-      "is_filter": true
+      "is_filter": false
     },
     {
       "fieldname": "control_assessment",
