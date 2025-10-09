@@ -552,11 +552,12 @@ async def bulk_upload_nodes(
 ):
     try:
         contents = await file.read()
-
         if file.filename.endswith(".csv"):
-            df = pd.read_csv(io.BytesIO(contents))
+            df = pd.read_csv(io.BytesIO(contents), dtype=str)
+            df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
         elif file.filename.endswith(".xlsx"):
-            df = pd.read_excel(io.BytesIO(contents))
+            df = pd.read_excel(io.BytesIO(contents), dtype=str)
+            df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
         else:
             raise HTTPException(status_code=400, detail="Unsupported file format")
 

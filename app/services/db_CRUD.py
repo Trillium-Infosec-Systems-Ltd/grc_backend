@@ -283,13 +283,13 @@ class GenericCRUD:
 
 
         return {"n": node, "id": data["id"]}
-    async def get_all(self, current_user,skip: int = 0, limit: int = 10, filters: dict = None):
+    async def get_all(self, current_user, skip: int = 0, limit: int = 10, filters: dict = None):
         filters = filters or {}
         where_clauses = []
         params = {"skip": skip, "limit": limit}
         org_id = current_user.get("org_id")
-        filterable_fields = {f["fieldname"]: f for f in self.schema["fields"] if f.get("is_filter")
-    }
+
+        filterable_fields = {f["fieldname"]: f for f in self.schema["fields"] if f.get("is_filter")}
         for i, (key, value) in enumerate(filters.items()):
             if key not in filterable_fields:
                 continue  # only allow fields marked as is_filter
@@ -300,20 +300,15 @@ class GenericCRUD:
 
             # --- Text fields ---
             if fieldtype in ["Data", "LongText"]:
-                # if frontend sent a number (like control_id=7.1), don’t apply toLower
                 try:
                     float(value)
-                    # exact numeric match
                     where_clauses.append(f"n.{key} = ${param_key}")
                 except ValueError:
-                    # normal string → case-insensitive contains search
                     where_clauses.append(f"toLower(toString(n.{key})) CONTAINS toLower(${param_key})")
 
-            # --- Dropdowns / Radios ---
             elif fieldtype in ["Radio", "Select"]:
                 where_clauses.append(f"n.{key} = ${param_key}")
 
-            # --- Dates ---
             elif fieldtype == "Date":
                 if filters.get(f"{key}_min"):
                     where_clauses.append(f"n.{key} >= ${param_key}_min")
@@ -323,14 +318,12 @@ class GenericCRUD:
                     params[f"{param_key}_max"] = filters[f"{key}_max"]
                 continue
 
-            # --- Default fallback (exact match) ---
             else:
                 where_clauses.append(f"n.{key} = ${param_key}")
 
             params[param_key] = value
 
         where_str = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
-
 
         # Get total count
         count_query = f"""
@@ -341,7 +334,13 @@ class GenericCRUD:
         count_result = await self.session.run(count_query, **params)
         total = (await count_result.single())["total"]
 
-        # Get main data with incoming/outgoing relationships
+        # ✅ Order by control_id if doctype is 'control'
+        if self.doctype == "control":
+            order_clause = "ORDER BY n.control_id ASC"
+        else:
+            order_clause = "ORDER BY n.created_at DESC"
+
+        # Get main data
         data_query = f"""
         MATCH (n:{self.doctype})
         {where_str}
@@ -358,7 +357,7 @@ class GenericCRUD:
                 type: type(r2),
                 node: target
             }}) AS relationships
-        ORDER BY n.created_at DESC
+        {order_clause}
         SKIP $skip
         LIMIT $limit
         """
@@ -366,13 +365,10 @@ class GenericCRUD:
         records = await data_result.data()
 
         items = []
-        
 
         for record in records:
             node = dict(record["n"])
             relationships = record["relationships"]
-
-
 
             if self.doctype == "control":
                 control_id = node.get("control_id")
@@ -385,14 +381,11 @@ class GenericCRUD:
                     result = await self.session.run(assessment_query, control_id=control_id, org_id=org_id)
                     record = await result.single()
                     if record and record.get("a"):
-                        print("record is there actually")
                         assessment = record["a"]
                         node["rating"] = assessment.get("control_rating", "Low")
                         node["compliance_status"] = assessment.get("control_compliance", "Non-Compliant")
                         control_assesment_flag = True
-                
-            
-            # Enhance node fields by resolving target_field values
+
             for field in self.schema["fields"]:
                 fieldname = field.get("fieldname")
                 fieldtype = field.get("fieldtype")
@@ -416,29 +409,19 @@ class GenericCRUD:
                         matched_nodes.append(rel["node"])
 
                 if fieldtype == "Link":
-                    # import pdb;pdb.set_trace()
                     node[fieldname] = matched_nodes[0].get(target_field) if matched_nodes else None
                 elif fieldtype == "MultiLink":
                     node[fieldname] = ", ".join([n.get(target_field) for n in matched_nodes if target_field in n])
 
                 if self.doctype == "control":
-                    if  control_assesment_flag:
-                        print("control_Assessed")
-                    else:
-                        print("control not Assessed")
-
-                        node["rating"] =  "Low"
+                    if not control_assesment_flag:
+                        node["rating"] = "Low"
                         node["compliance_status"] = "Non-Compliant"
-    
-                    
-                    
 
             items.append({
                 "node": node,
                 "relationships": relationships
             })
-            
-        # items = json.loads(json.dumps(items, allow_nan=False))
 
         return {
             "total": total,
@@ -446,6 +429,7 @@ class GenericCRUD:
             "limit": limit,
             "items": items
         }
+
     async def get_by_id(self, item_id: str):
         query = f"""
         MATCH (n:{self.doctype} {{id: $item_id}})
