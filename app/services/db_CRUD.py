@@ -411,7 +411,7 @@ class GenericCRUD:
                 if fieldtype == "Link":
                     node[fieldname] = matched_nodes[0].get(target_field) if matched_nodes else None
                 elif fieldtype == "MultiLink":
-                    node[fieldname] = ", ".join([n.get(target_field) for n in matched_nodes if target_field in n])
+                    node[fieldname] = ", ".join([str(n.get(target_field)) for n in matched_nodes if target_field in n])
 
                 if self.doctype == "control":
                     if not control_assesment_flag:
