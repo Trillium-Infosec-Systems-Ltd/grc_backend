@@ -552,14 +552,32 @@ async def bulk_upload_nodes(
 ):
     try:
         contents = await file.read()
+
         if file.filename.endswith(".csv"):
-            df = pd.read_csv(io.BytesIO(contents), dtype=str)
-            df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+            df = pd.read_csv(
+                io.BytesIO(contents),
+                dtype=str,
+                keep_default_na=False,   # Prevents pandas from converting blanks or NA
+                na_filter=False          # Keeps all text as-is (e.g. "5.10")
+            )
+
         elif file.filename.endswith(".xlsx"):
-            df = pd.read_excel(io.BytesIO(contents), dtype=str)
-            df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+            df = pd.read_excel(
+                io.BytesIO(contents),
+                dtype=str,
+                keep_default_na=False,
+                na_filter=False,
+                engine="openpyxl"         # Ensures modern Excel support
+            )
+
         else:
             raise HTTPException(status_code=400, detail="Unsupported file format")
+
+        # Clean up whitespace
+        df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+
+        # Replace empty strings with None
+        df = df.replace(r'^\s*$', None, regex=True)
 
         df = df.where(pd.notnull(df), None)  # Replace NaN with None
 
