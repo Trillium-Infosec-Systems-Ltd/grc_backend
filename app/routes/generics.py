@@ -583,7 +583,8 @@ async def bulk_upload_nodes(
 
         schema = load_schema(doctype)
         field_map = {f["label"]: f["fieldname"] for f in schema["fields"]}
-        required_fields = [f["fieldname"] for f in schema["fields"] if f.get("required")]
+        # required_fields = [f["fieldname"] for f in schema["fields"] if f.get("required")]
+        required_fields = []
 
         created = []
         errors = []
