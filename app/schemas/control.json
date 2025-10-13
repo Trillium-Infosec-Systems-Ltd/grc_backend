@@ -35,7 +35,7 @@
       "label": "Sub Category",
       "display_on_frontend": false,
       "span": 12,
-      "required": true
+      "required": false
     },
       {
       "fieldname": "framework",
