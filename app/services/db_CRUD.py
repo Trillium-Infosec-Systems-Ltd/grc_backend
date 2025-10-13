@@ -279,6 +279,7 @@ class GenericCRUD:
                 await self.session.run(relation_query, val=val, source_id=data["id"])
 
         if self.doctype == "assets":
+            print("documenmt is assets so creating risks")
             await self.create_risks_for_asset(data)
 
 

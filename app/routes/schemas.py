@@ -189,5 +189,4 @@ async def get_schema(
     schema["relationships"] = sanitize_for_json(relationships)
     schema["data"] = sanitize_for_json(doc_data)
     sanitized_schema = sanitize_for_json(schema)
-    print("schema:", sanitized_schema)
     return sanitized_schema
