@@ -553,6 +553,11 @@ class GenericCRUD:
                 "control_assessment": data["control_assessment"],
                 "control_rating": data["rating"],
                 "control_compliance": data["compliance_status"],
+                "remarks": data.get("remarks", ""),
+                "observation": data.get("observation", ""),
+                "reference_evidence" : data.get("reference_evidence", ""),
+                "next_review_date": data.get("next_review_date", ""),
+                "control_applicable": data.get("control_applicable", "Yes"),
                 "created_at": now,
                 "updated_at": now
             }
@@ -567,6 +572,7 @@ class GenericCRUD:
                 check_query,
                 control_id=assessment_data["control_id"],
                 organization_id=assessment_data["organization_id"]
+                
             )
             record = await result.single()
             
@@ -608,8 +614,13 @@ class GenericCRUD:
 
             assessment_data = {
                 "control_id": data["control_id"],
+                "control_assessment":data["control_assessment"],
                 "organization_id": self.current_user.get("org_id"),
-
+                "remarks": data.get("remarks", ""),
+                "observation": data.get("observation", ""),
+                "reference_evidence" : data.get("reference_evidence", ""),
+                "next_review_date": data.get("next_review_date", ""),
+                "control_applicable": data.get("control_applicable", "Yes"),
                 "control_rating": data["rating"],
                 "control_compliance":"Non-Compliant",
                 "created_at": now,

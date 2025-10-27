@@ -116,6 +116,11 @@ async def get_schema(
                     print("i am here bro")
                     doc_data["rating"] = assessment.get("control_rating")
                     doc_data["compliance_status"] = assessment.get("control_compliance")
+                    doc_data["remarks"] = assessment.get("remarks", "")
+                    doc_data["observation"] = assessment.get("observation", "")
+                    doc_data["reference_evidence"] = assessment.get("reference_evidence", "")
+                    doc_data["next_review_date"] = assessment.get("next_review_date", "")
+                    doc_data["control_applicable"] = assessment.get("control_applicable", "Yes")
                     # Parse questions if present
                     questions_raw = assessment.get("control_assessment")
                     if questions_raw:
@@ -149,8 +154,13 @@ async def get_schema(
                     
 
                 doc_data["rating"] = "Low"
-                doc_data["compliance_status"] = "Non-Compliant"
+                doc_data["compliance_status"] = "Non Compliant"
                 doc_data["control_assessment"] = questions
+                doc_data["remarks"] = ""
+                doc_data["observation"] = ""
+                doc_data["reference_evidence"] = ""
+                doc_data["next_review_date"] = ""
+                doc_data["control_applicable"] = "Yes"
 
                 # Set ease_of_exploitation based on rating (case-insensitive, Low->Low, Medium->Medium, High->High)
             ease_map = {
