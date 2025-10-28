@@ -12,7 +12,8 @@
       "display_on_frontend": false,
       "span": 24,
       "required": true,
-       "is_filter":true
+       "is_filter":true,
+       "is_edit_disabled":true
     },
     {
       "fieldname": "control",

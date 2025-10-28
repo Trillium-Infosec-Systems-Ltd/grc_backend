@@ -1,0 +1,15 @@
+{
+    "doctype": "framework",
+    "fields": [
+      {
+        "fieldname": "framework_name",
+        "fieldtype": "Data",
+        "label": "Framework Name",
+        "display_on_frontend": true,
+        "span": 12,
+        "required": true,
+       "is_filter":true
+      }
+    
+    ]
+}

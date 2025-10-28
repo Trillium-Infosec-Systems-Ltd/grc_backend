@@ -39,13 +39,15 @@
     },
       {
       "fieldname": "framework",
-      "fieldtype": "Select",
       "label": "Framework",
+      "fieldtype": "Link",
+      "link_to": "framework",
+       "target_field":"framework_name",
       "span": 12,
-      "options": ["NIST CSF", "ISO 27001", "PCI DSS", "HIPAA"],
       "required": true,
       "display_on_frontend": true,
-      "default": "NIST CSF",
+      "relationship_direction":"incoming",
+      "relationship_type":"owns",
       "is_filter": true
     },
     {
