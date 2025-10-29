@@ -62,7 +62,12 @@ async def get_all_items(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
     ):
+    
+        
     filters = dict(request.query_params)
+    if doctype == "control_question" and filters.get("control_id"):
+        filters["control"] = filters.pop("control_id")
+        filters['control'] = filters['control'].strip('\'"')
     filters.pop("skip", None)
     filters.pop("limit", None)
 

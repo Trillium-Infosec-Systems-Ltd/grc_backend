@@ -336,7 +336,7 @@ class GenericCRUD:
         total = (await count_result.single())["total"]
 
         # ✅ Order by control_id if doctype is 'control'
-        if self.doctype == "control":
+        if self.doctype in ["control","control_question"]:
             order_clause = "ORDER BY n.control_id ASC"
         else:
             order_clause = "ORDER BY n.created_at DESC"
