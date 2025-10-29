@@ -3,6 +3,7 @@ from fastapi.responses import FileResponse
 from neo4j import AsyncSession
 from services.dependencies import get_current_user
 from services.db_CRUD import GenericCRUD
+from services.schema_loader import load_schema
 
 
 from services.database import get_db
@@ -106,6 +107,70 @@ async def update_item(doctype: str, item_id: str, data: dict, db: AsyncSession =
 @router.delete("/data/{doctype}/{item_id}")
 async def delete_item(doctype: str, item_id: str, db: AsyncSession = Depends(get_db)):
     crud = GenericCRUD(db, doctype)
+    # Check relationships first — if any exist, refuse delete and return the first relation in the error
+    item = await crud.get_by_id(item_id)
+    if not item:
+        raise HTTPException(404, detail="Item not found")
+
+    relationships = item.get("relationships") or []
+    # filter out empty/null relationship entries
+    relationships = [r for r in relationships if r and r.get("node")]
+    if relationships:
+        first = relationships[0]
+        node = first.get("node") or {}
+
+        # Prefer a human-friendly name, fall back to schema-defined label field, then doctype.
+        linked_name = node.get("name")
+        linked_id = node.get("id")
+        linked_doctype = None
+        if linked_id and isinstance(linked_id, str) and "-" in linked_id:
+            linked_doctype = linked_id.split("-")[0]
+        where_desc = linked_doctype or "another item"
+
+        # If node has a friendly name property, use it first
+        if linked_name:
+            target_desc = f"{where_desc} '{linked_name}'"
+        else:
+            # Try to load the doctype schema and pick a display field
+            friendly_value = None
+            if linked_doctype:
+                try:
+                    schema = load_schema(linked_doctype)
+                    # 1) field with default_label
+                    for f in schema.get("fields", []):
+                        if f.get("default_label"):
+                            fieldname = f.get("fieldname")
+                            if node.get(fieldname):
+                                friendly_value = node.get(fieldname)
+                                break
+                    # 2) first display_on_frontend
+                    if not friendly_value:
+                        for f in schema.get("fields", []):
+                            if f.get("display_on_frontend"):
+                                fieldname = f.get("fieldname")
+                                if node.get(fieldname):
+                                    friendly_value = node.get(fieldname)
+                                    break
+                    # 3) any field from schema that exists on node
+                    if not friendly_value:
+                        for f in schema.get("fields", []):
+                            fieldname = f.get("fieldname")
+                            if node.get(fieldname):
+                                friendly_value = node.get(fieldname)
+                                break
+                except Exception:
+                    friendly_value = None
+
+            if friendly_value:
+                target_desc = f"{where_desc} '{friendly_value}'"
+            else:
+                # Fall back to doctype only (avoid showing raw id if it's not user-friendly)
+                target_desc = where_desc
+
+        # Friendly, user-facing message — no developer-level details about relationship type/direction
+        detail = f"Cannot delete this item because it is being used by {target_desc}. Remove that link first and try again."
+        raise HTTPException(status_code=400, detail=detail)
+
     count = await crud.delete(item_id)
     if not count:
         raise HTTPException(404, detail="Item not found or not deleted")
