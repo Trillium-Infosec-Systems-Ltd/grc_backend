@@ -31,9 +31,10 @@ class GenericCRUD:
         all_threat_ids = set()
 
         for cont in security_controls:
+            # handle t.relevant_controls stored as a string or a list
             query = """
             MATCH (t:threat)
-            WHERE $cont IN t.relevant_controls
+            WHERE ($cont IN t.relevant_controls) OR (t.relevant_controls = $cont)
             RETURN t.id AS threat_id
             """
             result = await self.session.run(query, cont=cont)
@@ -742,5 +743,111 @@ class GenericCRUD:
 
             asset_data = {**data, "id": item_id}
             await self.create_risks_for_asset(asset_data)
+
+        # If a related entity changed (control, threat, vulnerability), recompute risks for affected assets
+        if self.doctype in ["control", "threat", "vulnerability"]:
+            affected_assets = []
+
+            if self.doctype == "control":
+                # assets reference controls by the control node's id (e.g. 'control-13') in their security_controls list
+                control_node_id = item_id or node.get("id")
+                if control_node_id:
+                    query = """
+                    MATCH (a:assets)
+                    WHERE $control_node_id IN a.security_controls
+                    RETURN a
+                    """
+                    result = await self.session.run(query, control_node_id=control_node_id)
+                    records = await result.data()
+                    affected_assets = [dict(r["a"]) for r in records if r.get("a")]
+
+            elif self.doctype == "threat":
+                # find controls referenced by this threat and then assets that list those control ids in their security_controls
+                relevant_controls = data.get("relevant_controls") or node.get("relevant_controls") or []
+                # normalize to list if it's a single string
+                if isinstance(relevant_controls, str):
+                    relevant_controls = [relevant_controls]
+
+                if relevant_controls:
+                    # find assets where any control in relevant_controls is in a.security_controls
+                    query = """
+                    MATCH (a:assets)
+                    WHERE any(cont IN a.security_controls WHERE cont IN $relevant)
+                    RETURN a
+                    """
+                    result = await self.session.run(query, relevant=relevant_controls)
+                    records = await result.data()
+                    affected_assets = [dict(r["a"]) for r in records if r.get("a")]
+
+            else:  # vulnerability
+                vuln_id = data.get("id") or node.get("id")
+                if vuln_id:
+                    # collect relevant_controls from the vulnerability node itself (e.g. relevant_control_id)
+                    relevant_controls = set()
+                    vuln_rel = data.get("relevant_control_id") or node.get("relevant_control_id") or data.get("relevant_controls") or node.get("relevant_controls")
+                    if vuln_rel:
+                        if isinstance(vuln_rel, list):
+                            for x in vuln_rel:
+                                relevant_controls.add(x)
+                        elif isinstance(vuln_rel, str):
+                            # handle comma-separated or single string
+                            parts = [p.strip() for p in vuln_rel.split(",")] if "," in vuln_rel else [vuln_rel]
+                            for x in parts:
+                                if x:
+                                    relevant_controls.add(x)
+
+                    # also collect relevant_controls from threats that cause this vulnerability
+                    query = """
+                    MATCH (t:threat)-[:CAUSES_THREAT]->(v:vulnerability {id: $vuln_id})
+                    RETURN t.relevant_controls AS relevant
+                    """
+                    result = await self.session.run(query, vuln_id=vuln_id)
+                    records = await result.data()
+
+                    for r in records:
+                        rel = r.get("relevant")
+                        if isinstance(rel, list):
+                            for x in rel:
+                                relevant_controls.add(x)
+                        elif isinstance(rel, str) and rel:
+                            # handle comma-separated string
+                            parts = [p.strip() for p in rel.split(",")] if "," in rel else [rel]
+                            for x in parts:
+                                if x:
+                                    relevant_controls.add(x)
+
+                    if relevant_controls:
+                        relevant_list = list(relevant_controls)
+                        query2 = """
+                        MATCH (a:assets)
+                        WHERE any(cont IN a.security_controls WHERE cont IN $relevant)
+                        RETURN DISTINCT a
+                        """
+                        result2 = await self.session.run(query2, relevant=relevant_list)
+                        records2 = await result2.data()
+                        affected_assets = [dict(r["a"]) for r in records2 if r.get("a")]
+
+            # Deduplicate assets by id and recompute risks
+            seen = set()
+            for asset in affected_assets:
+                asset_id = asset.get("id")
+                if not asset_id or asset_id in seen:
+                    continue
+                seen.add(asset_id)
+
+                # delete existing risks for this asset
+                delete_risks_query = """
+                MATCH (r:risks {associated_assets: $asset_id})
+                DETACH DELETE r
+                """
+                await self.session.run(delete_risks_query, asset_id=asset_id)
+
+                # ensure asset has id in dict and pass to risk generator
+                asset_data = {**asset, "id": asset_id}
+                try:
+                    await self.create_risks_for_asset(asset_data)
+                except Exception:
+                    # swallow errors to avoid failing the original update; log could be added
+                    pass
 
         return {"n": node, "id": item_id}
