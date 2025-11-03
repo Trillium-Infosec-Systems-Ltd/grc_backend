@@ -192,8 +192,8 @@ async def get_schema(
         fieldname = field.get("fieldname")
         if fieldname == "control_assessment":
             field["default_value"] = sanitize_for_json(questions)
-        elif fieldname == "control_id":
-            field["default_value"] = doc_data.get("control_id", "")
+        elif fieldname == "control_id" and schema_name == "control_question":
+            field["default_value"] = doc_data.get("control", "")
         else:
             field["default_value"] = sanitize_for_json(doc_data.get(fieldname))
 
