@@ -9,23 +9,31 @@ async def compute_threat_info(threat_id: str, asset_value: str, db: AsyncSession
         OPTIONAL MATCH (t)<-[:MITIGATES]-(c:control)
         RETURN t.threat_name AS threat_name, 
                t.likelihood AS likelihood,
-               v.vulnerability_name AS vulnerability_name,
+               t.vulnerability AS vulnerability,
                c.control_id AS control_id,
                c.rating AS control_rating
     """
 
     result = await db.run(query, threat_id=threat_id)
     record = await result.single()
+    id = record["vulnerability"]
+    vulnerability_query = """
+        MATCH (v:vulnerability {id: $id})
+        RETURN v.vulnerability_name AS vulnerability_name
+    """
+    vuln_result = await db.run(vulnerability_query, id=id)
+    vuln_record = await vuln_result.single()
 
     if not record or not record.get("threat_name"):
         raise HTTPException(status_code=404, detail="Threat not found")
 
     threat_name = record["threat_name"]
     likelihood = record["likelihood"]
-    vulnerabilities = record["vulnerability_name"]
+    vulnerabilities = vuln_record["vulnerability_name"]
     control_name = record["control_id"]
-    control_rating = record["control_rating"]
-
+    control_rating = record.get("control_rating")
+    if control_rating is None:
+        control_rating = "Low"  # Default if no control rating found
     ease_map = {
         "High": "Low",
         "Medium": "Medium",
