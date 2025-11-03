@@ -16,7 +16,8 @@ import os
 from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from services.dependencies import get_current_user
 from datetime import datetime
 import os
 import uuid
@@ -166,11 +167,12 @@ async def get_csv_template(node_type: str):
 
 @router.get("/export_csv/{doctype}")
 async def export_csv(
-        doctype: str,
-        request: Request,
-        skip: int = Query(0, ge=0),
-        limit: int = Query(1000, ge=1, le=10000),
-        db: AsyncSession = Depends(get_db)
+    doctype: str,
+    request: Request,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(1000, ge=1, le=10000),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     filters = dict(request.query_params)
     filters.pop("skip", None)
@@ -179,33 +181,39 @@ async def export_csv(
     crud = GenericCRUD(db, doctype)
 
     try:
-        # Get data
-        data_response = await crud.get_all(skip=skip, limit=limit, filters=filters)
+        # Get data (pass current_user to match GenericCRUD.get_all signature)
+        data_response = await crud.get_all(current_user=current_user, skip=skip, limit=limit, filters=filters)
         items = data_response["items"]
         if not items:
             raise HTTPException(status_code=404, detail="No data to export")
 
-        # Load schema fieldnames
+        # Load schema fieldnames (use fieldname keys, not human labels)
         schema = load_schema(doctype)
-        schema_fields = [f["label"] for f in schema["fields"] if not f.get("hidden", False)]
+        schema_fields = [f["fieldname"] for f in schema["fields"] if not f.get("hidden", False)]
 
-        # Get all possible fields from data
+        # Get all possible fields from the returned data (flatten node if wrapped)
         actual_fields = set()
+        flattened_items = []
         for item in items:
-            actual_fields.update(item.keys())
+            node = item.get("node") if isinstance(item, dict) and item.get("node") is not None else item
+            # ensure we always work with a dict
+            node = dict(node) if node is not None else {}
+            flattened_items.append(node)
+            actual_fields.update(node.keys())
 
-        # Combine both schema + actual fields
-        all_fields = list(set(schema_fields).union(actual_fields))
+        # Combine schema fieldnames + any extra fields found in data, preserving schema order first
+        extra_fields = sorted(list(actual_fields - set(schema_fields)))
+        all_fields = schema_fields + extra_fields
 
         # Prepare CSV
         output = io.StringIO()
         writer = csv.DictWriter(output, fieldnames=all_fields, extrasaction='ignore')
         writer.writeheader()
 
-        for item in items:
+        for node in flattened_items:
             row = {}
             for field in all_fields:
-                value = item.get(field)
+                value = node.get(field)
                 if isinstance(value, list):
                     value = ", ".join(map(str, value))  # convert list to CSV-safe string
                 row[field] = value if value is not None else ""
