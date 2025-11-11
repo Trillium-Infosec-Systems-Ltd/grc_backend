@@ -245,7 +245,7 @@ async def get_user_by_id(
         raise HTTPException(status_code=403, detail="You cannot view other users")
 
     # Partner can only view users in their organization
-    if creator_role == "partner" and target_user.get("org_id") != creator_org_id:
+    if creator_role == "partner" and  creator_org_id not in target_user.get("org_id"):
         raise HTTPException(status_code=403, detail="You can only view users within your organization")
 
     return {"user": target_user, "relationships": relationship}
