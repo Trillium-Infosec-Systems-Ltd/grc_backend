@@ -224,19 +224,21 @@ class GenericCRUD:
 
         # Special handling for control: calculate ease_of_exploitation (case-insensitive)
         if self.doctype == "control" and "rating" in data:
+            
             ease_map = {
                 "High": "Low",
                 "Medium": "Medium",
                 "Low": "High"
             }
-            rating_val = str(data["rating"]).strip().lower()
-            ease_of_exploitation = ease_map.get(rating_val, "Unknown")
+            rating_val = data["rating"]
+            ease_of_exploitation = ease_map.get(rating_val)
             data["ease_of_exploitation"] = ease_of_exploitation
+            data["control_id"] = float(data["control_id"])
 
         # Keep control_assessment list directly in the node (if any)
         assessment_items = data.get("control_assessment", [])
         data["control_assessment"] = assessment_items
-
+        
         # Create the main node
         create_query = f"""
         CREATE (n:{self.doctype} $data)
@@ -285,6 +287,7 @@ class GenericCRUD:
 
 
         return {"n": node, "id": data["id"]}
+    
     async def get_all(self, current_user, skip: int = 0, limit: int = 10, filters: dict = None):
         filters = filters or {}
         where_clauses = []
@@ -376,6 +379,7 @@ class GenericCRUD:
 
             if self.doctype == "control":
                 control_id = node.get("control_id")
+                print(repr(control_id))
                 control_assesment_flag = False
                 if org_id and control_id:
                     assessment_query = """
@@ -387,7 +391,7 @@ class GenericCRUD:
                     if record and record.get("a"):
                         assessment = record["a"]
                         node["rating"] = assessment.get("control_rating", "Low")
-                        node["compliance_status"] = assessment.get("control_compliance", "Non-Compliant")
+                        node["compliance_status"] = assessment.get("control_compliance", "Non Compliant")
                         control_assesment_flag = True
 
             for field in self.schema["fields"]:

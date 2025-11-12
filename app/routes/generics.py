@@ -671,9 +671,13 @@ async def bulk_upload_nodes(
                     data["created_at"] = now
                     data["updated_at"] = now
 
-
+                    
                     # Special handling for control: calculate ease_of_exploitation only if rating is present and not None
-                    if doctype == "control" and data.get("rating") is not None:
+                    if doctype == "control":
+
+                        data["rating"] = "Low"
+                        data["compliance_status"] = "Non Compliant"
+                        data["control_assessment"]= []
                         ease_map = {
                             "High": "Low",
                             "Medium": "Medium",
@@ -681,6 +685,7 @@ async def bulk_upload_nodes(
                         }
                         ease_of_exploitation = ease_map.get(str(data["rating"]).strip(), "Unknown")
                         data["ease_of_exploitation"] = ease_of_exploitation
+                        data["control_id"] = float(data["control_id"])
                         
 
                     # Special handling for vulnerability: set ease_of_exploitation from linked control's rating if available
@@ -700,7 +705,6 @@ async def bulk_upload_nodes(
                                     "Medium": "Medium",
                                     "Low": "High"
                                 }
-                                rating_val = str(record["rating"]).strip()
                                 ease_of_exploitation = ease_map.get(record.get("rating"), "High")
                                 data["ease_of_exploitation"] = ease_of_exploitation
 
@@ -740,7 +744,7 @@ async def bulk_upload_nodes(
                             "fieldname": fname,
                             "values": resolved_ids,
                             "target_doctype": target_doctype,
-                            "relationship_type": field.get("relationship_type", "RELATED_TO"),
+                            "relationship_type": field.get("relationship_type", "RELATED_TO").upper(),
                             "direction": field.get("relationship_direction", "outgoing")
                         })
 
