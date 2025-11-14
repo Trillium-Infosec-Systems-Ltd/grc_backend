@@ -281,6 +281,7 @@
       "display_on_frontend": true,
       "display_on_field": "control_applicable",
       "display_on_value": "Yes",
+      "is_colorful": true,
       "is_filter": false
     },
     {
