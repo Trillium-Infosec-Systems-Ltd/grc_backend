@@ -46,14 +46,23 @@ async def get_link_options_service(
 
         # Use the first field for label in dropdown
         label_field = search_fields[0][0] if search_fields else "id"
-
+    
+        # if document_type == "control":
+        #             cypher = f"""
+        #             MATCH (n:{document_type})
+        #             {where_query}
+        #             RETURN n.control_id AS value, n.{label_field} AS label
+        #             SKIP $offset
+        #             LIMIT $limit
+        #             """
+        # else:
         cypher = f"""
         MATCH (n:{document_type})
         {where_query}
         RETURN n.id AS value, n.{label_field} AS label
         SKIP $offset
         LIMIT $limit
-        """
+            """
 
         result = await driver.run(cypher, params)
         return await result.data()

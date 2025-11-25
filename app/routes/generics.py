@@ -600,7 +600,7 @@ async def bulk_upload_nodes(
         if doctype == "control_question":
             controls_data = {}
             for index, row in df.iterrows():
-                control = row.get("Control", "")
+                control = float(row.get("Control", ""))
                 question = row.get("Questions", "").strip()
                 weightage = row.get("Weightage", 1)
 
@@ -623,21 +623,21 @@ async def bulk_upload_nodes(
             from services.db_CRUD import GenericCRUD
             crud = GenericCRUD(db, "control_question")
 
-            for control_name, question_list in controls_data.items():
+            for control, question_list in controls_data.items():
                 try:
                     match_query = """
                     MATCH (c:control {control_id: $val})
-                    RETURN c.id AS id
+                    RETURN c.control_id AS id
                     """
-                    result = await db.run(match_query, val=control_name)
+                    result = await db.run(match_query, val=control)
                     record = await result.single()
                     if not record:
-                        raise ValueError(f"Control not found where control_name = '{control_name}'")
+                        raise ValueError(f"Control not found where control_name = '{control}'")
 
                     control_id = record["id"]
 
                     data = {
-                        "control_id": control_id,
+                        "control_id": float(control_id),
                         "question": question_list
                     }
 
@@ -645,7 +645,7 @@ async def bulk_upload_nodes(
                     created.append(created_node["id"])
 
                 except Exception as e:
-                    errors.append({"control": control_name, "error": str(e)})
+                    errors.append({"control": control, "error": str(e)})
 
         else:
             for index, row in df.iterrows():
@@ -690,7 +690,7 @@ async def bulk_upload_nodes(
 
                     # Special handling for vulnerability: set ease_of_exploitation from linked control's rating if available
                     if doctype == "vulnerability":
-                        id = data.get("relevant_control_id")
+                        id = float(data.get("relevant_control_id"))
                         if id:
                             # Try to fetch the control node's rating (fix property name in Cypher)
                             control_query = """
@@ -728,11 +728,16 @@ async def bulk_upload_nodes(
 
                         resolved_ids = []
                         for val in raw_values:
+                            
+
                             match_query = f"""
                             MATCH (n:{target_doctype} {{{target_field}: $val}})
                             RETURN n.id AS id
                             """
-                            result = await db.run(match_query, val=val)
+                            try:
+                                result = await db.run(match_query, val=float(val))
+                            except:
+                                result = await db.run(match_query, val=val)
                             record = await result.single()
                             if not record:
                                 raise ValueError(f"{target_doctype} not found where {target_field} = '{val}'")

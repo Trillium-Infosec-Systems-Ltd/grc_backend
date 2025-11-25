@@ -120,6 +120,15 @@ class GenericCRUD:
         # Special case for 'control_question' with multiple questions
         if self.doctype == "control_question" and isinstance(data.get("question"), list):
             control_id = data.get("control_id")
+            
+            query =query ="""
+                MATCH(c:control_question {control:$control_id})
+                RETURN c.id as control_question
+            """
+            result = await self.session.run(query, control_id=control_id)
+            record = await result.single()
+            if record:
+                raise ValueError(f"Control Question already exists for control_id '{control_id}'")
 
             query ="""
                 MATCH(c:control {id:$control_id})
@@ -456,6 +465,7 @@ class GenericCRUD:
                 node: target
             }}) AS relationships
         """
+        
         result = await self.session.run(query, item_id=item_id)
         record = await result.single()
         if record:

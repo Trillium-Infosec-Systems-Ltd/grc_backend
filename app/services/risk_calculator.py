@@ -19,7 +19,7 @@ async def compute_threat_info(threat_id: str, asset_value: str, db: AsyncSession
     id = record["vulnerability"]
     vulnerability_query = """
         MATCH (v:vulnerability {id: $id})
-        RETURN v.vulnerability_name AS vulnerability_name
+        RETURN v.id AS id
     """
     vuln_result = await db.run(vulnerability_query, id=id)
     vuln_record = await vuln_result.single()
@@ -29,7 +29,7 @@ async def compute_threat_info(threat_id: str, asset_value: str, db: AsyncSession
 
     threat_name = record["threat_name"]
     likelihood = record["likelihood"]
-    vulnerabilities = vuln_record["vulnerability_name"]
+    vulnerabilities = vuln_record["id"]
     control_name = record["control_id"]
     control_rating = record.get("control_rating")
     if control_rating is None:
