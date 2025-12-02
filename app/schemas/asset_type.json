@@ -57,7 +57,7 @@
       "target_field":"control_id",
       "relationship_type": "HAS_CONTROL",
       "relation_direction": "outgoing",
-      "display_on_frontend": true,
+      "display_on_frontend": false,
       "required": true,
       "span": 12,
        "is_filter":true
