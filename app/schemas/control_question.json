@@ -26,6 +26,14 @@
       "is_filter":true
       
     },
+    {
+      "fieldname": "description",
+      "fieldtype": "LongText",
+      "label": "Description",
+      "span": 24,
+      "display_on_frontend": true,
+      "required": false
+    },
 
     {
       "fieldname": "question",

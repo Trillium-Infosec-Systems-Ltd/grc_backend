@@ -508,6 +508,7 @@ class GenericCRUD:
         # ✅ Special handling for control_question
         if self.doctype == "control_question" and isinstance(data.get("question"), list):
             control_id = data.get("control_id")
+            description = data.get("description")
             question_list = data.get("question", [])
 
             if not control_id or not question_list:
@@ -516,6 +517,7 @@ class GenericCRUD:
             # Transform into flat structure for storage
             update_data = {
                 "control_id": control_id,
+                "description": description,
                 "questions_text": [q["question"] for q in question_list],
                 "weights": [q.get("wheightage", 1) for q in question_list],
                 "updated_at": now
