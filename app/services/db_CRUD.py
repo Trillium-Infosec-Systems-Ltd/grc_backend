@@ -170,6 +170,7 @@ class GenericCRUD:
                 "control": control,
                 "questions_text": [q["question"] for q in question_list],
                 "weights": [q.get("wheightage", 1) for q in question_list],
+                "description": data.get("description", ""),
                 "created_at": now,
                 "updated_at": now
             }
@@ -180,6 +181,7 @@ class GenericCRUD:
                 id: $id,
                 control: $control,
                 questions_text: $questions_text,
+                description: $description,
                 weights: $weights,
                 created_at: $created_at,
                 updated_at: $updated_at
@@ -499,6 +501,26 @@ class GenericCRUD:
         result = await self.session.run(query)
         record = await result.single()
 
+        return record["cnt"] if record else 0
+
+    async def delete_bulk(self, item_ids: list):
+        """
+        Delete multiple nodes by their IDs without checking relationships.
+        Used for risks deletion where relationships should be forcefully removed.
+        Returns the count of deleted items.
+        """
+        if not item_ids:
+            return 0
+
+        query = f"""
+        MATCH (n:{self.doctype})
+        WHERE n.id IN $item_ids
+        WITH n, count(n) AS cnt
+        DETACH DELETE n
+        RETURN cnt
+        """
+        result = await self.session.run(query, item_ids=item_ids)
+        record = await result.single()
         return record["cnt"] if record else 0
 
     async def update(self, item_id: str, data: dict):

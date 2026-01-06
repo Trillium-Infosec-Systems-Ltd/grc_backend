@@ -603,6 +603,7 @@ async def bulk_upload_nodes(
                 control = float(row.get("Control", ""))
                 question = row.get("Questions", "").strip()
                 weightage = row.get("Weightage", 1)
+                description = row.get("description", "").strip()
 
                 if not control or not question:
                     continue
@@ -617,7 +618,9 @@ async def bulk_upload_nodes(
 
                 controls_data[control].append({
                     "question": question,
-                    "wheightage": weightage
+                    "wheightage": weightage,
+                    
+                    
                 })
 
             from services.db_CRUD import GenericCRUD
@@ -637,8 +640,10 @@ async def bulk_upload_nodes(
                     control_id = record["id"]
 
                     data = {
+                        "description": description,
                         "control_id": float(control_id),
                         "question": question_list
+                        
                     }
 
                     created_node = await crud.create(data)
