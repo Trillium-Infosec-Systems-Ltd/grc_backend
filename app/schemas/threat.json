@@ -25,20 +25,15 @@
       },
       {
         "fieldname": "vulnerability",
-        "fieldtype": "Link",
-        "label": "Vulnerability",
+        "fieldtype": "MultiLink",
+        "label": "Vulnerabilities",
         "link_to": "vulnerability",
         "target_field":"vulnerability_name",
         "relationship_direction": "incoming",
         "relationship_type": "CAUSES_THREAT",
         "display_on_frontend": true,
-        "required": false,
+        "required": true,
         "span": 12,
-        "isFetchingData": true,
-      "fetch_to": {
-        "to": "/data/vulnerability",
-        "path_params": ["vulnerability"]
-      },
        "is_filter":true
       },
       {
@@ -49,12 +44,13 @@
          "target_field":"control_id",
         "relationship_type": "MITIGATES",
         "relationship_direction": "incoming",
-        "display_on_frontend": true,
+        "display_on_frontend": false,
         "disabled": true,
         "required": false,
         "span": 12,
         "data_field": "relevant_control_id",
-       "is_filter":true
+       "is_filter":true,
+       "hidden": true
       },
       {
         "fieldname": "created_at",
