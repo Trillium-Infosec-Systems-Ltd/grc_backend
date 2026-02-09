@@ -169,7 +169,8 @@
       "data_field": "vulnerabilities",
       "span": 12,
       "required": false,
-      "disabled": true
+      "disabled": true,
+      "is_filter":true
     },
     {
       "fieldname": "control_ids",
