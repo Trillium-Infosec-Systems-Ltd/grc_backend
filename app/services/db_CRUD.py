@@ -26,12 +26,21 @@ class GenericCRUD:
         """
         Given an asset node data, compute threats and create associated risks.
         This can be reused by both single and bulk asset creation.
+        
+        Handles many-to-many relationship between controls and vulnerabilities:
+        - Multiple controls can be attached to a single vulnerability
+        - One control can be attached to multiple vulnerabilities
         """
-        security_controls = asset_data["security_controls"]
+        security_controls = asset_data.get("security_controls", [])
+        if isinstance(security_controls, str):
+            security_controls = [security_controls]
+        
         all_threat_ids = set()
 
+        # Find all threats related to the asset's security controls
+        # A threat is relevant if any of its associated vulnerabilities are mitigated by the asset's controls
         for cont in security_controls:
-            # handle t.relevant_controls stored as a string or a list
+            # Method 1: Check threats where the control is in relevant_controls (legacy support)
             query = """
             MATCH (t:threat)
             WHERE ($cont IN t.relevant_controls) OR (t.relevant_controls = $cont)
@@ -40,12 +49,39 @@ class GenericCRUD:
             result = await self.session.run(query, cont=cont)
             async for record in result:
                 all_threat_ids.add(record["threat_id"])
+            
+            # Method 2: Check threats via vulnerability -> control relationship (many-to-many)
+            # Find threats that have vulnerabilities mitigated by this control
+            vuln_threat_query = """
+            MATCH (c:control {id: $cont})-[:MITIGATES]->(v:vulnerability)<-[:CAUSES_THREAT]-(t:threat)
+            RETURN DISTINCT t.id AS threat_id
+            """
+            result = await self.session.run(vuln_threat_query, cont=cont)
+            async for record in result:
+                if record["threat_id"]:
+                    all_threat_ids.add(record["threat_id"])
+            
+            # Also check by control_id field
+            vuln_threat_query2 = """
+            MATCH (c:control {control_id: $cont})-[:MITIGATES]->(v:vulnerability)<-[:CAUSES_THREAT]-(t:threat)
+            RETURN DISTINCT t.id AS threat_id
+            """
+            result = await self.session.run(vuln_threat_query2, cont=cont)
+            async for record in result:
+                if record["threat_id"]:
+                    all_threat_ids.add(record["threat_id"])
 
         for threat_id in all_threat_ids:
             db_generator = get_db()
             db = await anext(db_generator)
             try:
-                calculated_risk = await compute_threat_info(threat_id, asset_data["asset_value"], db)
+                # Pass asset's security controls to compute_threat_info for proper filtering
+                calculated_risk = await compute_threat_info(
+                    threat_id, 
+                    asset_data["asset_value"], 
+                    db,
+                    asset_controls=security_controls
+                )
 
                 # Generate ID for risk node
                 id_query = """
@@ -59,16 +95,29 @@ class GenericCRUD:
                 new_id = record["new_id"]
                 risk_id = f"risks-{new_id}"
 
+                # Handle multiple control IDs (many-to-many relationship)
+                control_ids = calculated_risk.get("control_ids", [])
+                if not control_ids and calculated_risk.get("control_id"):
+                    control_ids = [calculated_risk["control_id"]]
+                
+                # Handle multiple vulnerabilities (many-to-many relationship)
+                vulnerabilities = calculated_risk.get("vulnerabilities")
+                if isinstance(vulnerabilities, list):
+                    # Store as list for MultiLink support
+                    related_vulnerabilities = vulnerabilities
+                else:
+                    related_vulnerabilities = vulnerabilities
+
                 risk_data = {
                     "id": risk_id,
                     "risk_by_asset": "Name",
                     "associated_assets": asset_data["id"],
-                    "type": asset_data["type"],
+                    "type": asset_data.get("type"),
                     "asset_value": asset_data["asset_value"],
                     "associated_threats": threat_id,
                     "threat_probability": calculated_risk["likelihood"],
-                    "related_vulnerabilities": calculated_risk["vulnerabilities"],
-                    "control_ids": cont,
+                    "related_vulnerabilities": related_vulnerabilities,
+                    "control_ids": control_ids if len(control_ids) > 1 else (control_ids[0] if control_ids else None),
                     "ease_of_exploitation": calculated_risk["ease_of_exploitation"],
                     "residual_risk": calculated_risk["risk"]
                 }
