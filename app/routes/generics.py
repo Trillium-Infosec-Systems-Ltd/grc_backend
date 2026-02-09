@@ -696,23 +696,24 @@ async def bulk_upload_nodes(
                     # Special handling for vulnerability: set ease_of_exploitation from linked control's rating if available
                     if doctype == "vulnerability":
                         id = float(data.get("relevant_control_id"))
-                        if id:
-                            # Try to fetch the control node's rating (fix property name in Cypher)
-                            control_query = """
-                                MATCH (c:control {control_id: $control_id})
-                                RETURN c.rating AS rating
-                            """
-                            result = await db.run(control_query, control_id=id)
-                            record = await result.single()
-                            if record and record.get("rating"):
-                                ease_map = {
-                                    "High": "Low",
-                                    "Medium": "Medium",
-                                    "Low": "High"
-                                }
-                                ease_of_exploitation = ease_map.get(record.get("rating"), "High")
-                                data["ease_of_exploitation"] = ease_of_exploitation
-
+                        data["ease_of_exploitation"] = "Low"
+                        # if id:
+                        #     # Try to fetch the control node's rating (fix property name in Cypher)
+                        #     control_query = """
+                        #         MATCH (c:control {control_id: $control_id})
+                        #         RETURN c.rating AS rating
+                        #     """
+                        #     result = await db.run(control_query, control_id=id)
+                        #     record = await result.single()
+                        #     if record and record.get("rating"):
+                        #         ease_map = {
+                        #             "High": "Low",
+                        #             "Medium": "Medium",
+                        #             "Low": "High"
+                        #         }
+                        #         ease_of_exploitation = ease_map.get(record.get("rating"), "High")
+                               
+                        #         data["ease_of_exploitation"] = ease_of_exploitation
                     relationships = []
 
                     for field in schema["fields"]:
