@@ -13,6 +13,7 @@ async def get_link_options_service(
     filters: str = None,
     limit: int = 10,
     offset: int = 0,
+    filter_for_doctype: str = None,
 ):
     try:
         filter_conditions = []
@@ -20,6 +21,43 @@ async def get_link_options_service(
             "limit": limit,
             "offset": offset,
         }
+
+        # If filter_for_doctype is specified, auto-detect the field that links to document_type
+        # and limit results to values that exist in that doctype
+        if filter_for_doctype:
+            try:
+                parent_schema = load_schema(filter_for_doctype)
+                # Find the field in parent schema that links to current document_type
+                field_name = None
+                for f in parent_schema.get("fields", []):
+                    if f.get("link_to") == document_type and f.get("fieldtype") in ["Link", "MultiLink"]:
+                        field_name = f.get("fieldname")
+                        break
+                
+                if field_name:
+                    # Query to get distinct IDs used in that field
+                    filter_query = f"""
+                    MATCH (p:{filter_for_doctype})
+                    WHERE p.{field_name} IS NOT NULL
+                    UNWIND 
+                        CASE WHEN p.{field_name} IS NULL THEN [] 
+                             WHEN p.{field_name} = '' THEN []
+                             ELSE CASE WHEN size(p.{field_name}) > 0 THEN p.{field_name} ELSE [p.{field_name}] END 
+                        END AS used_id
+                    RETURN DISTINCT used_id
+                    """
+                    result = await driver.run(filter_query)
+                    used_ids = [record["used_id"] for record in await result.data()]
+                    print(f"[filter_for_doctype] Found {len(used_ids)} distinct {document_type} IDs in {filter_for_doctype}.{field_name}")
+                    if used_ids:
+                        filter_conditions.append("n.id IN $used_ids")
+                        params["used_ids"] = used_ids
+                    else:
+                        # No values exist, return empty list
+                        return []
+            except Exception as e:
+                print(f"[filter_for_doctype] Error: {e}")
+                # Continue without filter on error
 
         # Add search field filters (OR condition)
         search_clauses = []

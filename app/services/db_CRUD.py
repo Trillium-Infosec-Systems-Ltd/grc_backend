@@ -169,30 +169,30 @@ class GenericCRUD:
 
         # Special case for 'control_question' with multiple questions
         if self.doctype == "control_question" and isinstance(data.get("question"), list):
-            control_id = data.get("control_id")
+            control_id = data.get("control_id")  # This is now the control node id like "control-123"
             
-            query =query ="""
-                MATCH(c:control_question {control:$control_id})
+            # First get the control's control_id value (like "5.10")
+            get_control_query = """
+                MATCH(c:control {id:$control_id})
+                RETURN c.control_id as control_id_value
+            """
+            result = await self.session.run(get_control_query, control_id=control_id)
+            record = await result.single()
+            
+            if record:
+                control = record["control_id_value"]  # e.g. "5.10"
+            else:
+                control = control_id  # Fallback to passed value
+            
+            # Check if control_question already exists for this control
+            check_query = """
+                MATCH(c:control_question {control:$control})
                 RETURN c.id as control_question
             """
-            result = await self.session.run(query, control_id=control_id)
+            result = await self.session.run(check_query, control=control)
             record = await result.single()
             if record:
-                raise ValueError(f"Control Question already exists for control_id '{control_id}'")
-
-            query ="""
-                MATCH(c:control {id:$control_id})
-                RETURN c.control_id as control
-            """
-
-            result = await self.session.run(query, control_id=control_id)
-            record = await result.single()
-
-
-            if record:
-                control = record["control"]
-            else:
-                control = control_id
+                raise ValueError(f"Control Question already exists for control '{control}'")
 
             # control = data.get("control_id")
             question_list = data.get("question", [])
@@ -356,11 +356,45 @@ class GenericCRUD:
 
             # --- Text fields ---
             if fieldtype in ["Data", "LongText"]:
+                # For control_id, always use string comparison to preserve "5.10" vs "5.1"
+                if key == "control_id":
+                    where_clauses.append(f"toString(n.{key}) = ${param_key}")
+                    params[param_key] = str(value)
+                    continue
                 try:
                     float(value)
                     where_clauses.append(f"n.{key} = ${param_key}")
                 except ValueError:
                     where_clauses.append(f"toLower(toString(n.{key})) CONTAINS toLower(${param_key})")
+
+            elif fieldtype == "MultiLink":
+                # For MultiLink fields (stored as arrays), check if any filter value is in the array
+                # Value can come as: single ID string, comma-separated string, JSON array string, or list
+                filter_values = value
+                
+                # Parse value if it's a string that looks like JSON array
+                if isinstance(value, str):
+                    if value.startswith('['):
+                        try:
+                            import json
+                            filter_values = json.loads(value)
+                        except:
+                            filter_values = value
+                    elif ',' in value:
+                        # Comma-separated values
+                        filter_values = [v.strip() for v in value.split(',')]
+                
+                print(f"[MultiLink Filter] key={key}, original_value={value}, filter_values={filter_values}")
+                
+                # Also ensure the array field exists
+                if isinstance(filter_values, list):
+                    # If multiple values selected, check if ANY of them is in the array
+                    where_clauses.append(f"(n.{key} IS NOT NULL AND ANY(v IN ${param_key} WHERE v IN n.{key}))")
+                else:
+                    # Single value - check if it's in the array
+                    where_clauses.append(f"(n.{key} IS NOT NULL AND ${param_key} IN n.{key})")
+                params[param_key] = filter_values
+                continue
 
             elif fieldtype in ["Radio", "Select"]:
                 where_clauses.append(f"n.{key} = ${param_key}")
@@ -380,6 +414,7 @@ class GenericCRUD:
             params[param_key] = value
 
         where_str = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+        print(f"[get_all] doctype={self.doctype}, where_str={where_str}, params={params}")
 
         # Get total count
         count_query = f"""
@@ -399,10 +434,11 @@ class GenericCRUD:
                      THEN toInteger(split(toString(n.control_id), '.')[1]) 
                      ELSE 0 END ASC"""
         elif self.doctype == "control_question":
+            # control_question uses 'control' field, not 'control_id'
             order_clause = """ORDER BY 
-                toInteger(split(toString(n.control_id), '.')[0]) ASC,
-                CASE WHEN size(split(toString(n.control_id), '.')) > 1 
-                     THEN toInteger(split(toString(n.control_id), '.')[1]) 
+                toInteger(split(toString(n.control), '.')[0]) ASC,
+                CASE WHEN size(split(toString(n.control), '.')) > 1 
+                     THEN toInteger(split(toString(n.control), '.')[1]) 
                      ELSE 0 END ASC"""
         else:
             order_clause = "ORDER BY n.created_at DESC"

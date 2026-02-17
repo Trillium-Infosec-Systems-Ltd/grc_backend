@@ -71,6 +71,23 @@ async def get_all_items(
         filters['control'] = filters['control'].strip('\'"')
     filters.pop("skip", None)
     filters.pop("limit", None)
+    
+    # Handle array-style parameters like related_vulnerabilities[]=value
+    # Convert keys like "related_vulnerabilities[]" to "related_vulnerabilities"
+    normalized_filters = {}
+    for key, value in filters.items():
+        clean_key = key.rstrip("[]")
+        if clean_key in normalized_filters:
+            # Append to existing list
+            existing = normalized_filters[clean_key]
+            if isinstance(existing, list):
+                existing.append(value)
+            else:
+                normalized_filters[clean_key] = [existing, value]
+        else:
+            normalized_filters[clean_key] = value
+    filters = normalized_filters
+    print(f"[get_all_items] doctype={doctype}, filters={filters}")
 
     crud = GenericCRUD(db, doctype)
     try:

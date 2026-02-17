@@ -37,6 +37,7 @@ async def get_link_options(
         field: Optional[str] = Query(None, description="Comma-separated fields like 'name,id'"),
         search_term: Optional[str] = Query(None, description="Search values, e.g. 'john,123'"),
         filters: Optional[str] = Query(None, description="JSON string for filtering nodes"),
+        filter_for_doctype: Optional[str] = Query(None, description="Limits results to values used in this doctype (auto-detects field)"),
         offset: int = Query(0, ge=0),
         driver: AsyncDriver = Depends(get_db),
 ):
@@ -74,7 +75,8 @@ async def get_link_options(
             search_fields=search_fields,
             filters=filters,
             limit=limit,
-            offset=offset
+            offset=offset,
+            filter_for_doctype=filter_for_doctype
         )
         return data
 
@@ -630,18 +632,18 @@ async def bulk_upload_nodes(
                 try:
                     match_query = """
                     MATCH (c:control {control_id: $val})
-                    RETURN c.control_id AS id
+                    RETURN c.id AS node_id, c.control_id AS control_id
                     """
                     result = await db.run(match_query, val=control)
                     record = await result.single()
                     if not record:
-                        raise ValueError(f"Control not found where control_name = '{control}'")
+                        raise ValueError(f"Control not found where control_id = '{control}'")
 
-                    control_id = record["id"]
+                    control_node_id = record["node_id"]  # e.g. "control-123"
 
                     data = {
                         "description": description,
-                        "control_id": str(control_id),
+                        "control_id": control_node_id,  # Pass the node id, not control_id value
                         "question": question_list
                         
                     }
