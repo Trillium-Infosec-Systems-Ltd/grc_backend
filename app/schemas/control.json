@@ -251,16 +251,6 @@
       "span": 12,
       "display_on_frontend": false
     },
-        {
-      "fieldname": "ease_of_exploitation",
-      "fieldtype": "Data",
-      "label": "ease_of_exploitation",
-      "display_on_frontend": false,
-      "span": 12,
-      "required": false,
-      "hidden":true
-    },
-    
     {
       "fieldname": "control_ratting_percentage",
       "fieldtype": "Data",

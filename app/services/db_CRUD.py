@@ -9,8 +9,6 @@ from typing import Any, Dict
 import json
 from fastapi import APIRouter, Depends
 from services.database import get_db
-# from routes.generics import compute_threat_info
-from services.risk_calculator import compute_threat_info
 import json
 from fastapi.responses import JSONResponse
 
@@ -24,95 +22,147 @@ class GenericCRUD:
 
     async def create_risks_for_asset(self, asset_data: dict):
         """
-        Given an asset node data, compute threats and create associated risks.
-        This can be reused by both single and bulk asset creation.
+        Given an asset node data, create risks based on the relationship chain:
+        Asset -> Controls -> Vulnerabilities -> Threats
+        Creates a separate risk for each unique (asset, control, vulnerability, threat) combination.
         """
-        security_controls = asset_data["security_controls"]
-        all_threat_ids = set()
-
-        for cont in security_controls:
-            # handle t.relevant_controls stored as a string or a list
-            query = """
-            MATCH (t:threat)
-            WHERE ($cont IN t.relevant_controls) OR (t.relevant_controls = $cont)
-            RETURN t.id AS threat_id
-            """
-            result = await self.session.run(query, cont=cont)
-            async for record in result:
-                all_threat_ids.add(record["threat_id"])
-
-        for threat_id in all_threat_ids:
-            db_generator = get_db()
-            db = await anext(db_generator)
+        security_controls = asset_data.get("security_controls", [])
+        if isinstance(security_controls, str):
+            security_controls = [security_controls]
+        
+        if not security_controls:
+            return
+        
+        # Query to get all combinations: control -> vulnerability -> threat
+        # for the given controls attached to this asset
+        chain_query = """
+        MATCH (c:control)-[:MITIGATES]->(v:vulnerability)-[:CAUSES_THREAT]->(t:threat)
+        WHERE c.id IN $control_ids
+        RETURN c.id AS control_id, 
+               c.rating AS control_rating,
+               v.id AS vulnerability_id,
+               v.vulnerability_name AS vulnerability_name,
+               v.ease_of_exploitation AS vuln_ease,
+               t.id AS threat_id,
+               t.likelihood AS threat_likelihood
+        """
+        
+        result = await self.session.run(chain_query, control_ids=security_controls)
+        combinations = await result.data()
+        
+        if not combinations:
+            return
+        
+        # Risk matrix for calculating residual risk
+        RISK_MATRIX = {
+            "Low": {
+                "Low":   {"Low": "Low", "Medium": "Low", "High": "Medium"},
+                "Medium": {"Low": "Low", "Medium": "Medium", "High": "Medium"},
+                "High": {"Low": "Medium", "Medium": "Medium", "High": "High"},
+            },
+            "Medium": {
+                "Low":   {"Low": "Low", "Medium": "Medium", "High": "Medium"},
+                "Medium": {"Low": "Medium", "Medium": "Medium", "High": "Medium"},
+                "High": {"Low": "Medium", "Medium": "High", "High": "Very High"},
+            },
+            "High": {
+                "Low":   {"Low": "Medium", "Medium": "Medium", "High": "Medium"},
+                "Medium": {"Low": "Medium", "Medium": "Medium", "High": "High"},
+                "High": {"Low": "High", "Medium": "Very High", "High": "Very High"},
+            }
+        }
+        
+        ease_map = {
+            "High": "Low",
+            "Medium": "Medium",
+            "Low": "High"
+        }
+        
+        for combo in combinations:
+            control_id = combo["control_id"]
+            control_rating = combo.get("control_rating", "Low")
+            vulnerability_id = combo["vulnerability_id"]
+            vulnerability_name = combo.get("vulnerability_name", "")
+            vuln_ease = combo.get("vuln_ease")  # Get vulnerability's ease_of_exploitation
+            threat_id = combo["threat_id"]
+            threat_likelihood = combo.get("threat_likelihood", "Medium")
+            
+            # Use vulnerability's ease_of_exploitation if available, otherwise derive from control rating
+            if vuln_ease and vuln_ease in ["Low", "Medium", "High"]:
+                ease_of_exploitation = vuln_ease
+            else:
+                ease_of_exploitation = ease_map.get(str(control_rating).strip() if control_rating else "Low", "High")
+            
+            # Calculate residual risk using the matrix
+            asset_value = asset_data.get("asset_value", "Medium")
             try:
-                calculated_risk = await compute_threat_info(threat_id, asset_data["asset_value"], db)
+                residual_risk = RISK_MATRIX[threat_likelihood][asset_value][ease_of_exploitation]
+            except KeyError:
+                residual_risk = "Unknown"
+            
+            # Generate ID for risk node
+            id_query = """
+            MERGE (c:Counter {doctype: $doctype})
+            ON CREATE SET c.current = 1
+            ON MATCH SET c.current = c.current + 1
+            RETURN c.current AS new_id
+            """
+            id_result = await self.session.run(id_query, doctype="risks")
+            id_record = await id_result.single()
+            new_id = id_record["new_id"]
+            risk_id = f"risks-{new_id}"
+            
+            risk_data = {
+                "id": risk_id,
+                "risk_by_asset": "Name",
+                "associated_assets": asset_data["id"],
+                "type": asset_data.get("type"),
+                "asset_value": asset_value,
+                "associated_threats": threat_id,
+                "threat_probability": threat_likelihood,
+                "related_vulnerabilities": [vulnerability_id],
+                "control_ids": [control_id],
+                "ease_of_exploitation": ease_of_exploitation,
+                "residual_risk": residual_risk
+            }
+            
+            # Create risk node
+            create_query = """
+            CREATE (n:risks $data)
+            RETURN n
+            """
+            await self.session.run(create_query, data=risk_data)
+            
+            # Create relationships based on schema
+            schema = load_schema("risks")
+            for field in schema["fields"]:
+                if field.get("fieldtype") not in ["Link", "MultiLink"]:
+                    continue
 
-                # Generate ID for risk node
-                id_query = """
-                MERGE (c:Counter {doctype: $doctype})
-                ON CREATE SET c.current = 1
-                ON MATCH SET c.current = c.current + 1
-                RETURN c.current AS new_id
-                """
-                result = await self.session.run(id_query, doctype="risks")
-                record = await result.single()
-                new_id = record["new_id"]
-                risk_id = f"risks-{new_id}"
+                fieldname = field["fieldname"]
+                target_value = risk_data.get(fieldname)
+                if not target_value:
+                    continue
 
-                risk_data = {
-                    "id": risk_id,
-                    "risk_by_asset": "Name",
-                    "associated_assets": asset_data["id"],
-                    "type": asset_data["type"],
-                    "asset_value": asset_data["asset_value"],
-                    "associated_threats": threat_id,
-                    "threat_probability": calculated_risk["likelihood"],
-                    "related_vulnerabilities": calculated_risk["vulnerabilities"],
-                    "control_ids": cont,
-                    "ease_of_exploitation": calculated_risk["ease_of_exploitation"],
-                    "residual_risk": calculated_risk["risk"]
-                }
+                target_doctype = field["link_to"]
+                relationship_type = field.get("relationship_type", "RELATED_TO").upper()
+                direction = field.get("relationship_direction", "outgoing")
+                values = target_value if isinstance(target_value, list) else [target_value]
 
-                # Create node
-                create_query = """
-                CREATE (n:risks $data)
-                RETURN n
-                """
-                await self.session.run(create_query, data=risk_data)
-
-                # Create relationships
-                schema = load_schema("risks")
-                for field in schema["fields"]:
-                    if field.get("fieldtype") not in ["Link", "MultiLink"]:
-                        continue
-
-                    fieldname = field["fieldname"]
-                    target_value = risk_data.get(fieldname)
-                    if not target_value:
-                        continue
-
-                    target_doctype = field["link_to"]
-                    relationship_type = field.get("relationship_type", "RELATED_TO").upper()
-                    direction = field.get("relationship_direction", "outgoing")
-                    values = target_value if isinstance(target_value, list) else [target_value]
-
-                    for val in values:
-                        if direction == "incoming":
-                            relation_query = f"""
-                            MATCH (target:{target_doctype} {{id: $val}})
-                            MATCH (source:risks {{id: $source_id}})
-                            MERGE (target)-[r:{relationship_type}]->(source)
-                            """
-                        else:
-                            relation_query = f"""
-                            MATCH (target:{target_doctype} {{id: $val}})
-                            MATCH (source:risks {{id: $source_id}})
-                            MERGE (source)-[r:{relationship_type}]->(target)
-                            """
-                        await self.session.run(relation_query, val=val, source_id=risk_id)
-
-            finally:
-                await db_generator.aclose()
+                for val in values:
+                    if direction == "incoming":
+                        relation_query = f"""
+                        MATCH (target:{target_doctype} {{id: $val}})
+                        MATCH (source:risks {{id: $source_id}})
+                        MERGE (target)-[r:{relationship_type}]->(source)
+                        """
+                    else:
+                        relation_query = f"""
+                        MATCH (target:{target_doctype} {{id: $val}})
+                        MATCH (source:risks {{id: $source_id}})
+                        MERGE (source)-[r:{relationship_type}]->(target)
+                        """
+                    await self.session.run(relation_query, val=val, source_id=risk_id)
 
 
     async def create(self, data: dict):
@@ -233,18 +283,9 @@ class GenericCRUD:
         data["updated_at"] = now
 
 
-        # Special handling for control: calculate ease_of_exploitation (case-insensitive)
-        if self.doctype == "control" and "rating" in data:
-            
-            ease_map = {
-                "High": "Low",
-                "Medium": "Medium",
-                "Low": "High"
-            }
-            rating_val = data["rating"]
-            ease_of_exploitation = ease_map.get(rating_val)
-            data["ease_of_exploitation"] = ease_of_exploitation
-            data["control_id"] = float(data["control_id"])
+        # Special handling for control: keep control_id as string to preserve values like "5.10"
+        if self.doctype == "control" and "control_id" in data:
+            data["control_id"] = str(data["control_id"]).strip()
 
         # Keep control_assessment list directly in the node (if any)
         assessment_items = data.get("control_assessment", [])
@@ -293,9 +334,8 @@ class GenericCRUD:
                 await self.session.run(relation_query, val=val, source_id=data["id"])
 
         if self.doctype == "assets":
-            print("documenmt is assets so creating risks")
+            print("document is assets so creating risks")
             await self.create_risks_for_asset(data)
-
 
         return {"n": node, "id": data["id"]}
     
@@ -350,11 +390,20 @@ class GenericCRUD:
         count_result = await self.session.run(count_query, **params)
         total = (await count_result.single())["total"]
 
-        # ✅ Order by control_id if doctype is 'control'
+        # ✅ Order by control_id if doctype is 'control' - handle version-style IDs like 5.1, 5.10
         if self.doctype == "control":
-            order_clause = "ORDER BY n.control_id ASC"
+            # Split control_id by '.' and sort numerically (e.g., 5.1, 5.2, ..., 5.10)
+            order_clause = """ORDER BY 
+                toInteger(split(toString(n.control_id), '.')[0]) ASC,
+                CASE WHEN size(split(toString(n.control_id), '.')) > 1 
+                     THEN toInteger(split(toString(n.control_id), '.')[1]) 
+                     ELSE 0 END ASC"""
         elif self.doctype == "control_question":
-            order_clause = "ORDER BY n.control ASC"
+            order_clause = """ORDER BY 
+                toInteger(split(toString(n.control_id), '.')[0]) ASC,
+                CASE WHEN size(split(toString(n.control_id), '.')) > 1 
+                     THEN toInteger(split(toString(n.control_id), '.')[1]) 
+                     ELSE 0 END ASC"""
         else:
             order_clause = "ORDER BY n.created_at DESC"
 
@@ -363,18 +412,18 @@ class GenericCRUD:
         MATCH (n:{self.doctype})
         {where_str}
         OPTIONAL MATCH (source)-[r1]->(n)
+        WITH n, collect(DISTINCT {{
+            direction: "incoming",
+            type: type(r1),
+            node: source
+        }}) AS incoming_rels
         OPTIONAL MATCH (n)-[r2]->(target)
-        RETURN n,
-            collect({{
-                direction: "incoming",
-                type: type(r1),
-                node: source
-            }}) +
-            collect({{
-                direction: "outgoing",
-                type: type(r2),
-                node: target
-            }}) AS relationships
+        WITH n, incoming_rels, collect(DISTINCT {{
+            direction: "outgoing",
+            type: type(r2),
+            node: target
+        }}) AS outgoing_rels
+        RETURN n, incoming_rels + outgoing_rels AS relationships
         {order_clause}
         SKIP $skip
         LIMIT $limit
@@ -453,19 +502,18 @@ class GenericCRUD:
         query = f"""
         MATCH (n:{self.doctype} {{id: $item_id}})
         OPTIONAL MATCH (source)-[r1]->(n)
+        WITH n, collect(DISTINCT {{
+            direction: "incoming",
+            type: type(r1),
+            node: source
+        }}) AS incoming_rels
         OPTIONAL MATCH (n)-[r2]->(target)
-
-        RETURN n,
-            collect({{
-                direction: "incoming",
-                type: type(r1),
-                node: source
-            }}) + 
-            collect({{
-                direction: "outgoing",
-                type: type(r2),
-                node: target
-            }}) AS relationships
+        WITH n, incoming_rels, collect(DISTINCT {{
+            direction: "outgoing",
+            type: type(r2),
+            node: target
+        }}) AS outgoing_rels
+        RETURN n, incoming_rels + outgoing_rels AS relationships
         """
         
         result = await self.session.run(query, item_id=item_id)
@@ -578,14 +626,6 @@ class GenericCRUD:
         if self.doctype == "control" and isinstance(data.get("control_assessment"), list):
             data["control_assessment"] = json.dumps(data["control_assessment"])  # Serialize
             data["updated_at"] = now  # Already set, but reinforces clarity
-            ease_map = {
-                "High": "Low",
-                "Medium": "Medium",
-                "Low": "High"
-            }
-            ease_of_exploitation = ease_map.get(str(data['rating']).strip(), "Unknown")
-
-            data["ease_of_exploitation"] =ease_of_exploitation
             print("++++++++++++++++++ current user id is",self.current_user.get("org_id"))
    
             assessment_data = {
@@ -643,14 +683,6 @@ class GenericCRUD:
         if self.doctype == "control" and data.get("control_assessment") is None:
            # Serialize
             data["updated_at"] = now  # Already set, but reinforces clarity
-            ease_map = {
-                "High": "Low",
-                "Medium": "Medium",
-                "Low": "High"
-            }
-            ease_of_exploitation = ease_map.get(str(data['rating']).strip(), "Unknown")
-
-            data["ease_of_exploitation"] =ease_of_exploitation
             print("++++++++++++++++++ current user id is",self.current_user.get("org_id"))
 
             assessment_data = {
@@ -781,8 +813,16 @@ class GenericCRUD:
             """
             await self.session.run(delete_risks_query, asset_id=item_id)
 
-            asset_data = {**data, "id": item_id}
-            await self.create_risks_for_asset(asset_data)
+            # Fetch the full asset node to ensure we have all required fields
+            asset_query = """
+            MATCH (a:assets {id: $asset_id})
+            RETURN a
+            """
+            asset_result = await self.session.run(asset_query, asset_id=item_id)
+            asset_record = await asset_result.single()
+            if asset_record and asset_record.get("a"):
+                asset_data = dict(asset_record["a"])
+                await self.create_risks_for_asset(asset_data)
 
         # If a related entity changed (control, threat, vulnerability), recompute risks for affected assets
         if self.doctype in ["control", "threat", "vulnerability"]:
@@ -802,78 +842,74 @@ class GenericCRUD:
                     affected_assets = [dict(r["a"]) for r in records if r.get("a")]
 
             elif self.doctype == "threat":
-                # find controls referenced by this threat and then assets that list those control ids in their security_controls
-                relevant_controls = data.get("relevant_controls") or node.get("relevant_controls") or []
-                # normalize to list if it's a single string
-                if isinstance(relevant_controls, str):
-                    relevant_controls = [relevant_controls]
-
-                if relevant_controls:
-                    # find assets where any control in relevant_controls is in a.security_controls
-                    query = """
-                    MATCH (a:assets)
-                    WHERE any(cont IN a.security_controls WHERE cont IN $relevant)
-                    RETURN a
+                threat_id = item_id or node.get("id")
+                
+                # Method 1: Find assets through risks that reference this threat
+                if threat_id:
+                    risk_assets_query = """
+                    MATCH (r:risks {associated_threats: $threat_id})
+                    MATCH (a:assets {id: r.associated_assets})
+                    RETURN DISTINCT a
                     """
-                    result = await self.session.run(query, relevant=relevant_controls)
+                    result = await self.session.run(risk_assets_query, threat_id=threat_id)
                     records = await result.data()
                     affected_assets = [dict(r["a"]) for r in records if r.get("a")]
-
-            else:  # vulnerability
-                vuln_id = data.get("id") or node.get("id")
-                if vuln_id:
-                    # collect relevant_controls from the vulnerability node itself (e.g. relevant_control_id)
-                    relevant_controls = set()
-                    vuln_rel = data.get("relevant_control_id") or node.get("relevant_control_id") or data.get("relevant_controls") or node.get("relevant_controls")
-                    if vuln_rel:
-                        if isinstance(vuln_rel, list):
-                            for x in vuln_rel:
-                                relevant_controls.add(x)
-                        elif isinstance(vuln_rel, str):
-                            # handle comma-separated or single string
-                            parts = [p.strip() for p in vuln_rel.split(",")] if "," in vuln_rel else [vuln_rel]
-                            for x in parts:
-                                if x:
-                                    relevant_controls.add(x)
-
-                    # also collect relevant_controls from threats that cause this vulnerability
-                    query = """
-                    MATCH (t:threat)-[:CAUSES_THREAT]->(v:vulnerability {id: $vuln_id})
-                    RETURN t.relevant_controls AS relevant
+                
+                # Method 2: Find assets through relationship chain: control -[MITIGATES]-> vulnerability -[CAUSES_THREAT]-> threat
+                if threat_id:
+                    chain_query = """
+                    MATCH (c:control)-[:MITIGATES]->(v:vulnerability)-[:CAUSES_THREAT]->(t:threat {id: $threat_id})
+                    MATCH (a:assets)
+                    WHERE c.id IN a.security_controls
+                    RETURN DISTINCT a
                     """
-                    result = await self.session.run(query, vuln_id=vuln_id)
+                    chain_result = await self.session.run(chain_query, threat_id=threat_id)
+                    chain_records = await chain_result.data()
+                    for r in chain_records:
+                        if r.get("a"):
+                            affected_assets.append(dict(r["a"]))
+
+            elif self.doctype == "vulnerability":
+                vuln_id = item_id or data.get("id") or node.get("id")
+                print(f"[DEBUG] Vulnerability update - vuln_id: {vuln_id}")
+                
+                # Method 1: Find assets through risks that reference this vulnerability
+                if vuln_id:
+                    risk_assets_query = """
+                    MATCH (r:risks)
+                    WHERE $vuln_id IN r.related_vulnerabilities
+                    MATCH (a:assets {id: r.associated_assets})
+                    RETURN DISTINCT a
+                    """
+                    result = await self.session.run(risk_assets_query, vuln_id=vuln_id)
                     records = await result.data()
-
-                    for r in records:
-                        rel = r.get("relevant")
-                        if isinstance(rel, list):
-                            for x in rel:
-                                relevant_controls.add(x)
-                        elif isinstance(rel, str) and rel:
-                            # handle comma-separated string
-                            parts = [p.strip() for p in rel.split(",")] if "," in rel else [rel]
-                            for x in parts:
-                                if x:
-                                    relevant_controls.add(x)
-
-                    if relevant_controls:
-                        relevant_list = list(relevant_controls)
-                        query2 = """
-                        MATCH (a:assets)
-                        WHERE any(cont IN a.security_controls WHERE cont IN $relevant)
-                        RETURN DISTINCT a
-                        """
-                        result2 = await self.session.run(query2, relevant=relevant_list)
-                        records2 = await result2.data()
-                        affected_assets = [dict(r["a"]) for r in records2 if r.get("a")]
+                    affected_assets = [dict(r["a"]) for r in records if r.get("a")]
+                    print(f"[DEBUG] Method 1 (risks query): Found {len(affected_assets)} assets")
+                
+                # Method 2: Find assets through relationship chain: control -[MITIGATES]-> vulnerability
+                if vuln_id:
+                    chain_query = """
+                    MATCH (c:control)-[:MITIGATES]->(v:vulnerability {id: $vuln_id})
+                    MATCH (a:assets)
+                    WHERE c.id IN a.security_controls
+                    RETURN DISTINCT a
+                    """
+                    chain_result = await self.session.run(chain_query, vuln_id=vuln_id)
+                    chain_records = await chain_result.data()
+                    print(f"[DEBUG] Method 2 (chain query): Found {len(chain_records)} assets")
+                    for r in chain_records:
+                        if r.get("a"):
+                            affected_assets.append(dict(r["a"]))
 
             # Deduplicate assets by id and recompute risks
             seen = set()
+            print(f"[DEBUG] Updating {self.doctype}, found {len(affected_assets)} affected assets")
             for asset in affected_assets:
                 asset_id = asset.get("id")
                 if not asset_id or asset_id in seen:
                     continue
                 seen.add(asset_id)
+                print(f"[DEBUG] Recomputing risks for asset: {asset_id}")
 
                 # delete existing risks for this asset
                 delete_risks_query = """
@@ -886,8 +922,8 @@ class GenericCRUD:
                 asset_data = {**asset, "id": asset_id}
                 try:
                     await self.create_risks_for_asset(asset_data)
-                except Exception:
-                    # swallow errors to avoid failing the original update; log could be added
-                    pass
+                    print(f"[DEBUG] Successfully recreated risks for asset: {asset_id}")
+                except Exception as e:
+                    print(f"[ERROR] Failed to recreate risks for asset {asset_id}: {e}")
 
         return {"n": node, "id": item_id}

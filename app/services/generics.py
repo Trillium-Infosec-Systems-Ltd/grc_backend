@@ -37,9 +37,14 @@ async def get_link_options_service(
             filters_dict = json.loads(filters)
             for idx, (key, val) in enumerate(filters_dict.items()):
                 filter_key = f"filter_{idx}"
-                # ✅ cast filter fields to string too
-                filter_conditions.append(f"toString(n.{key}) = ${filter_key}")
-                params[filter_key] = str(val)
+                # Handle list values with IN clause
+                if isinstance(val, list):
+                    filter_conditions.append(f"n.{key} IN ${filter_key}")
+                    params[filter_key] = val
+                else:
+                    # ✅ cast filter fields to string too
+                    filter_conditions.append(f"toString(n.{key}) = ${filter_key}")
+                    params[filter_key] = str(val)
 
         where_clause = " AND ".join(filter_conditions)
         where_query = f"WHERE {where_clause}" if where_clause else ""
@@ -47,19 +52,27 @@ async def get_link_options_service(
         # Use the first field for label in dropdown
         label_field = search_fields[0][0] if search_fields else "id"
     
-        # if document_type == "control":
-        #             cypher = f"""
-        #             MATCH (n:{document_type})
-        #             {where_query}
-        #             RETURN n.control_id AS value, n.{label_field} AS label
-        #             SKIP $offset
-        #             LIMIT $limit
-        #             """
-        # else:
+        # Add sorting for controls to handle version-style IDs (5.1, 5.2, ..., 5.10)
+        if document_type == "control":
+            order_clause = """ORDER BY 
+                toInteger(split(toString(n.control_id), '.')[0]) ASC,
+                CASE WHEN size(split(toString(n.control_id), '.')) > 1 
+                     THEN toInteger(split(toString(n.control_id), '.')[1]) 
+                     ELSE 0 END ASC"""
+        elif document_type == "control_question":
+            order_clause = """ORDER BY 
+                toInteger(split(toString(n.control_id), '.')[0]) ASC,
+                CASE WHEN size(split(toString(n.control_id), '.')) > 1 
+                     THEN toInteger(split(toString(n.control_id), '.')[1]) 
+                     ELSE 0 END ASC"""
+        else:
+            order_clause = ""
+
         cypher = f"""
         MATCH (n:{document_type})
         {where_query}
         RETURN n.id AS value, n.{label_field} AS label
+        {order_clause}
         SKIP $offset
         LIMIT $limit
             """

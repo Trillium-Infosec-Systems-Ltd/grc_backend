@@ -159,7 +159,7 @@
     },
     {
       "fieldname": "related_vulnerabilities",
-      "fieldtype": "Link",
+      "fieldtype": "MultiLink",
       "label": "Related Vulnerabilities (CVEs)",
       "link_to": "vulnerability",
       "target_field": "vulnerability_name",
@@ -173,7 +173,7 @@
     },
     {
       "fieldname": "control_ids",
-      "fieldtype": "Link",
+      "fieldtype": "MultiLink",
       "label": "Control ID(s)",
       "link_to": "control",
        "target_field":"control_id",
@@ -182,7 +182,7 @@
       "span": 12,
       "required": false,
       "disabled": true,
-      "data_field": "security_control_id"
+      "data_field": "security_control_ids"
     },
     {
       "fieldname": "ease_of_exploitation",

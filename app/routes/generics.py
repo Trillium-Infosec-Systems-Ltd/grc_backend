@@ -600,7 +600,7 @@ async def bulk_upload_nodes(
         if doctype == "control_question":
             controls_data = {}
             for index, row in df.iterrows():
-                control = float(row.get("Control", ""))
+                control = str(row.get("Control", "")).strip()
                 question = row.get("Questions", "").strip()
                 weightage = row.get("Weightage", 1)
                 description = row.get("description", "").strip()
@@ -641,7 +641,7 @@ async def bulk_upload_nodes(
 
                     data = {
                         "description": description,
-                        "control_id": float(control_id),
+                        "control_id": str(control_id),
                         "question": question_list
                         
                     }
@@ -690,28 +690,18 @@ async def bulk_upload_nodes(
                         }
                         ease_of_exploitation = ease_map.get(str(data["rating"]).strip(), "Unknown")
                         data["ease_of_exploitation"] = ease_of_exploitation
-                        data["control_id"] = float(data["control_id"])
+                        # Keep control_id as string to preserve values like "5.10" vs "5.1"
+                        data["control_id"] = str(data["control_id"]).strip()
                         
 
-                    # Special handling for vulnerability: set ease_of_exploitation from linked control's rating if available
+                    # Special handling for vulnerability: set ease_of_exploitation to "Low" by default
                     if doctype == "vulnerability":
-                        id = float(data.get("relevant_control_id"))
-                        if id:
-                            # Try to fetch the control node's rating (fix property name in Cypher)
-                            control_query = """
-                                MATCH (c:control {control_id: $control_id})
-                                RETURN c.rating AS rating
-                            """
-                            result = await db.run(control_query, control_id=id)
-                            record = await result.single()
-                            if record and record.get("rating"):
-                                ease_map = {
-                                    "High": "Low",
-                                    "Medium": "Medium",
-                                    "Low": "High"
-                                }
-                                ease_of_exploitation = ease_map.get(record.get("rating"), "High")
-                                data["ease_of_exploitation"] = ease_of_exploitation
+                        data["ease_of_exploitation"] = "Low"
+                        data["control_assessment"] = []
+
+                    # Special handling for threat: initialize control_assessment
+                    if doctype == "threat":
+                        data["control_assessment"] = []
 
                     relationships = []
 
@@ -733,17 +723,25 @@ async def bulk_upload_nodes(
 
                         resolved_ids = []
                         for val in raw_values:
-                            
+                            val_str = str(val).strip()
 
                             match_query = f"""
                             MATCH (n:{target_doctype} {{{target_field}: $val}})
                             RETURN n.id AS id
                             """
-                            try:
-                                result = await db.run(match_query, val=float(val))
-                            except:
-                                result = await db.run(match_query, val=val)
+                            # Try as string first (to preserve values like "5.10")
+                            result = await db.run(match_query, val=val_str)
                             record = await result.single()
+                            
+                            # If not found and looks numeric, try as float (for backward compatibility)
+                            if not record:
+                                try:
+                                    float_val = float(val_str)
+                                    result = await db.run(match_query, val=float_val)
+                                    record = await result.single()
+                                except (ValueError, TypeError):
+                                    pass
+                            
                             if not record:
                                 raise ValueError(f"{target_doctype} not found where {target_field} = '{val}'")
                             resolved_ids.append(record["id"])
