@@ -99,9 +99,9 @@ async def get_link_options_service(
                      ELSE 0 END ASC"""
         elif document_type == "control_question":
             order_clause = """ORDER BY 
-                toInteger(split(toString(n.control_id), '.')[0]) ASC,
-                CASE WHEN size(split(toString(n.control_id), '.')) > 1 
-                     THEN toInteger(split(toString(n.control_id), '.')[1]) 
+                toInteger(split(toString(n.control), '.')[0]) ASC,
+                CASE WHEN size(split(toString(n.control), '.')) > 1 
+                     THEN toInteger(split(toString(n.control), '.')[1]) 
                      ELSE 0 END ASC"""
         else:
             order_clause = ""

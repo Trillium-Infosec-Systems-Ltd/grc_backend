@@ -180,16 +180,18 @@ class GenericCRUD:
             record = await result.single()
             
             if record:
-                control = record["control_id_value"]  # e.g. "5.10"
+                control = str(record["control_id_value"])  # e.g. "5.10" - ensure it's a string
             else:
-                control = control_id  # Fallback to passed value
+                control = str(control_id)  # Fallback to passed value as string
             
             # Check if control_question already exists for this control
+            # Use toString() for comparison to handle both string and numeric control_id values
             check_query = """
-                MATCH(c:control_question {control:$control})
+                MATCH(c:control_question)
+                WHERE toString(c.control) = $control
                 RETURN c.id as control_question
             """
-            result = await self.session.run(check_query, control=control)
+            result = await self.session.run(check_query, control=str(control))
             record = await result.single()
             if record:
                 raise ValueError(f"Control Question already exists for control '{control}'")

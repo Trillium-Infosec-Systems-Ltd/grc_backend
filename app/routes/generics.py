@@ -543,6 +543,8 @@ async def get_threat_info(threat_id: str ,asset_value: str = Query(...), db: Asy
 #     except Exception as e:
 #         raise HTTPException(status_code=500, detail=f"Failed to process file: {str(e)}")
 import math
+from openpyxl import load_workbook
+
 def sanitize_dict_values(obj, replace_with=None):
     if isinstance(obj, dict):
         return {k: sanitize_dict_values(v, replace_with) for k, v in obj.items()}
@@ -552,6 +554,57 @@ def sanitize_dict_values(obj, replace_with=None):
         if math.isnan(obj) or math.isinf(obj):
             return replace_with
     return obj
+
+
+def read_excel_preserve_text(contents: bytes) -> pd.DataFrame:
+    """
+    Read Excel file while preserving text formatting (e.g., "5.20" stays as "5.20", not "5.2").
+    Uses openpyxl to read the displayed cell value instead of the underlying numeric value.
+    """
+    wb = load_workbook(io.BytesIO(contents), data_only=False)
+    ws = wb.active
+    
+    # Get headers from first row
+    headers = []
+    for cell in ws[1]:
+        headers.append(str(cell.value) if cell.value is not None else "")
+    
+    # Read data rows
+    data = []
+    for row in ws.iter_rows(min_row=2, values_only=False):
+        row_data = {}
+        for i, cell in enumerate(row):
+            if i < len(headers):
+                # Get the displayed value, preserving format
+                if cell.value is None:
+                    row_data[headers[i]] = None
+                elif cell.number_format and cell.number_format != 'General' and isinstance(cell.value, (int, float)):
+                    # If cell has a number format, use it to format the value
+                    try:
+                        # For numeric cells with custom formats like "0.00", format the value
+                        if '0' in cell.number_format or '#' in cell.number_format:
+                            # Count decimal places in format
+                            format_str = cell.number_format
+                            if '.' in format_str:
+                                decimal_places = len(format_str.split('.')[-1].replace('0', '').replace('#', '')) or len(format_str.split('.')[-1])
+                                decimal_places = format_str.split('.')[-1].count('0')
+                                row_data[headers[i]] = f"{cell.value:.{decimal_places}f}"
+                            else:
+                                row_data[headers[i]] = str(cell.value)
+                        else:
+                            row_data[headers[i]] = str(cell.value)
+                    except Exception:
+                        row_data[headers[i]] = str(cell.value)
+                elif isinstance(cell.value, float):
+                    # For floats without special formatting, check if it's a version-like number
+                    # If the float representation loses precision (e.g., 5.20 -> 5.2), keep as-is
+                    # but at least convert to string
+                    row_data[headers[i]] = str(cell.value)
+                else:
+                    row_data[headers[i]] = str(cell.value) if cell.value is not None else None
+        data.append(row_data)
+    
+    return pd.DataFrame(data)
 
 
 @router.post("/bulk_upload/{doctype}")
@@ -572,13 +625,8 @@ async def bulk_upload_nodes(
             )
 
         elif file.filename.endswith(".xlsx"):
-            df = pd.read_excel(
-                io.BytesIO(contents),
-                dtype=str,
-                keep_default_na=False,
-                na_filter=False,
-                engine="openpyxl"         # Ensures modern Excel support
-            )
+            # Use custom reader to better preserve text formatting for version-like values (e.g., "5.20")
+            df = read_excel_preserve_text(contents)
 
         else:
             raise HTTPException(status_code=400, detail="Unsupported file format")
@@ -630,12 +678,40 @@ async def bulk_upload_nodes(
 
             for control, question_list in controls_data.items():
                 try:
+                    # Try exact match first
                     match_query = """
                     MATCH (c:control {control_id: $val})
                     RETURN c.id AS node_id, c.control_id AS control_id
                     """
                     result = await db.run(match_query, val=control)
                     record = await result.single()
+                    
+                    # If no exact match, try string comparison (handles "5.2" matching "5.20" and vice versa)
+                    if not record:
+                        # Try matching as string with toString() for cases where control_id is stored as number
+                        match_query_str = """
+                        MATCH (c:control)
+                        WHERE toString(c.control_id) = $val OR toString(c.control_id) STARTS WITH $val_with_dot
+                        RETURN c.id AS node_id, c.control_id AS control_id
+                        """
+                        result = await db.run(match_query_str, val=control, val_with_dot=control + ".")
+                        record = await result.single()
+                    
+                    # If still no match, try numeric comparison for version-like values
+                    if not record:
+                        try:
+                            # Check if the value looks like a version number (e.g., "5.2", "5.20")
+                            float_val = float(control)
+                            match_query_float = """
+                            MATCH (c:control)
+                            WHERE toFloat(toString(c.control_id)) = $float_val
+                            RETURN c.id AS node_id, c.control_id AS control_id
+                            """
+                            result = await db.run(match_query_float, float_val=float_val)
+                            record = await result.single()
+                        except (ValueError, TypeError):
+                            pass
+                    
                     if not record:
                         raise ValueError(f"Control not found where control_id = '{control}'")
 
