@@ -718,6 +718,10 @@ class GenericCRUD:
                     assessment_data=assessment_data
                 )
 
+            # Trigger: When control becomes Compliant, check vulnerabilities
+            if data.get("compliance_status") == "Compliant":
+                await self._handle_compliant_control_trigger(item_id, assessment_data["organization_id"])
+
         if self.doctype == "control" and data.get("control_assessment") is None:
            # Serialize
             data["updated_at"] = now  # Already set, but reinforces clarity
@@ -965,3 +969,87 @@ class GenericCRUD:
                     print(f"[ERROR] Failed to recreate risks for asset {asset_id}: {e}")
 
         return {"n": node, "id": item_id}
+
+    async def _handle_compliant_control_trigger(self, control_id: str, organization_id: str):
+        """
+        When a control assessment becomes Compliant:
+        1. Find all vulnerabilities connected to this control
+        2. For each vulnerability, check if ALL connected controls are compliant for this org
+        3. If all controls are compliant, delete the vulnerability and its associated risks
+        """
+        print(f"[TRIGGER] Control {control_id} is Compliant. Checking connected vulnerabilities...")
+
+        # Find all vulnerabilities connected to this control via MITIGATES relationship
+        vuln_query = """
+        MATCH (c:control {id: $control_id})-[:MITIGATES]->(v:vulnerability)
+        RETURN v.id AS vulnerability_id
+        """
+        result = await self.session.run(vuln_query, control_id=control_id)
+        vulnerabilities = await result.data()
+
+        if not vulnerabilities:
+            print(f"[TRIGGER] No vulnerabilities connected to control {control_id}")
+            return
+
+        for vuln in vulnerabilities:
+            vuln_id = vuln["vulnerability_id"]
+            print(f"[TRIGGER] Checking vulnerability {vuln_id}...")
+
+            # Get all controls connected to this vulnerability
+            controls_query = """
+            MATCH (c:control)-[:MITIGATES]->(v:vulnerability {id: $vuln_id})
+            RETURN c.id AS control_id, c.control_id AS control_id_value
+            """
+            controls_result = await self.session.run(controls_query, vuln_id=vuln_id)
+            connected_controls = await controls_result.data()
+
+            if not connected_controls:
+                continue
+
+            # Check if ALL connected controls are compliant for this organization
+            all_compliant = True
+            for ctrl in connected_controls:
+                ctrl_id_value = ctrl["control_id_value"]
+                
+                # Check control_assessment for this control and organization
+                assessment_query = """
+                MATCH (a:control_assessment {control_id: $control_id, organization_id: $org_id})
+                RETURN a.control_compliance AS compliance_status
+                """
+                assessment_result = await self.session.run(
+                    assessment_query, 
+                    control_id=ctrl_id_value, 
+                    org_id=organization_id
+                )
+                assessment_record = await assessment_result.single()
+
+                if not assessment_record or assessment_record.get("compliance_status") != "Compliant":
+                    all_compliant = False
+                    print(f"[TRIGGER] Control {ctrl_id_value} is not compliant. Skipping vulnerability deletion.")
+                    break
+
+            if all_compliant:
+                print(f"[TRIGGER] All controls for vulnerability {vuln_id} are compliant. Deleting vulnerability and associated risks...")
+                
+                # Delete all risks associated with this vulnerability
+                delete_risks_query = """
+                MATCH (r:risks)
+                WHERE $vuln_id IN r.related_vulnerabilities
+                DETACH DELETE r
+                RETURN count(r) AS deleted_count
+                """
+                risks_result = await self.session.run(delete_risks_query, vuln_id=vuln_id)
+                risks_record = await risks_result.single()
+                deleted_risks = risks_record["deleted_count"] if risks_record else 0
+                print(f"[TRIGGER] Deleted {deleted_risks} risks associated with vulnerability {vuln_id}")
+
+                # Delete the vulnerability
+                delete_vuln_query = """
+                MATCH (v:vulnerability {id: $vuln_id})
+                DETACH DELETE v
+                RETURN count(v) AS deleted_count
+                """
+                vuln_delete_result = await self.session.run(delete_vuln_query, vuln_id=vuln_id)
+                vuln_delete_record = await vuln_delete_result.single()
+                deleted_vulns = vuln_delete_record["deleted_count"] if vuln_delete_record else 0
+                print(f"[TRIGGER] Deleted vulnerability {vuln_id}")
