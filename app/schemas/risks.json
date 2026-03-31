@@ -2,6 +2,26 @@
   "doctype": "Risk",
   "fields": [
     {
+      "fieldname": "organization_id",
+      "fieldtype": "Data",
+      "label": "Organization ID",
+      "required": false,
+      "display_on_frontend": false,
+      "hidden": true,
+      "span": 12,
+      "is_filter": true
+    },
+    {
+      "fieldname": "is_deleted",
+      "fieldtype": "Data",
+      "label": "Is Deleted",
+      "required": false,
+      "display_on_frontend": false,
+      "hidden": true,
+      "span": 12,
+      "default": "false"
+    },
+    {
       "fieldname": "risk_by_asset",
       "fieldtype": "Radio",
       "label": "Risk by Asset",

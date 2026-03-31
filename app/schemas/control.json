@@ -268,7 +268,7 @@
       "default": "Non Compliant",
       "required": false,
       "span": 24,
-      "display_on_frontend": true,
+      "display_on_frontend": false,
       "display_on_field": "control_applicable",
       "display_on_value": "Yes",
       "is_colorful": true,

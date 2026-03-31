@@ -35,13 +35,236 @@ def sanitize_for_json(obj):
         return [sanitize_for_json(i) for i in obj]
     return obj
 
+
+# ============== COMPLAINCE ROUTES (must be before generic /data/{doctype} routes) ==============
+
+@router.get("/data/complaince")
+async def get_complaince_data(
+    request: Request,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get compliance data - controls merged with control_assessment for the current organization.
+    This is a virtual view that combines control and control_assessment data.
+    """
+    filters = dict(request.query_params)
+    filters.pop("skip", None)
+    filters.pop("limit", None)
+
+    org_id = current_user.get("org_id")
+    print(f"[COMPLAINCE] Route hit! org_id={org_id}, filters={filters}")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="Organization ID not found in user token")
+
+    try:
+        # Build filter conditions for controls
+        where_clauses = []
+        params = {"skip": skip, "limit": limit, "org_id": org_id}
+
+        # Handle filters
+        filter_idx = 0
+        for key, value in filters.items():
+            if key in ["control_id", "control_name", "category", "framework"]:
+                param_key = f"filter_{filter_idx}"
+                if key == "control_id":
+                    where_clauses.append(f"toString(c.{key}) = ${param_key}")
+                else:
+                    where_clauses.append(f"toLower(toString(c.{key})) CONTAINS toLower(${param_key})")
+                params[param_key] = str(value)
+                filter_idx += 1
+            elif key in ["compliance_status", "rating"]:
+                # These come from control_assessment
+                param_key = f"filter_{filter_idx}"
+                if key == "compliance_status":
+                    where_clauses.append(f"COALESCE(ca.control_compliance, 'Non Compliant') = ${param_key}")
+                elif key == "rating":
+                    where_clauses.append(f"COALESCE(ca.control_rating, 'Low') = ${param_key}")
+                params[param_key] = str(value)
+                filter_idx += 1
+
+        where_str = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+
+        # Count query
+        count_query = f"""
+        MATCH (c:control)
+        OPTIONAL MATCH (ca:control_assessment {{control_id: c.control_id, organization_id: $org_id}})
+        {where_str}
+        RETURN count(c) AS total
+        """
+        count_result = await db.run(count_query, **params)
+        total = (await count_result.single())["total"]
+        print(f"[COMPLAINCE] Total controls found: {total}")
+
+        # Main data query - join controls with control_assessment for this org
+        data_query = f"""
+        MATCH (c:control)
+        OPTIONAL MATCH (ca:control_assessment {{control_id: c.control_id, organization_id: $org_id}})
+        OPTIONAL MATCH (f:framework)-[:owns]->(c)
+        {where_str}
+        RETURN c, ca, f.framework_name AS framework_name
+        ORDER BY
+            toInteger(split(toString(c.control_id), '.')[0]) ASC,
+            CASE WHEN size(split(toString(c.control_id), '.')) > 1
+                 THEN toInteger(split(toString(c.control_id), '.')[1])
+                 ELSE 0 END ASC
+        SKIP $skip
+        LIMIT $limit
+        """
+
+        data_result = await db.run(data_query, **params)
+        records = await data_result.data()
+        print(f"[COMPLAINCE] Records returned: {len(records)}")
+
+        items = []
+        for record in records:
+            control = dict(record["c"]) if record["c"] else {}
+            assessment = dict(record["ca"]) if record["ca"] else {}
+
+            # Merge control data with assessment data
+            node = {
+                "id": control.get("id"),
+                "control_id": control.get("control_id"),
+                "control_name": control.get("control_name"),
+                "category": control.get("category"),
+                "sub_category": control.get("sub_category"),
+                "framework": record.get("framework_name"),
+                "confidentiality": control.get("confidentiality", "No"),
+                "integrity": control.get("integrity", "No"),
+                "availability": control.get("availability", "No"),
+                "control_applicable": assessment.get("control_applicable", control.get("control_applicable", "Yes")),
+                "rating": assessment.get("control_rating", "Low"),
+                "compliance_status": assessment.get("control_compliance", "Non Compliant"),
+                "control_assessment": assessment.get("control_assessment"),
+                "remarks": assessment.get("remarks", ""),
+                "observation": assessment.get("observation", ""),
+                "reference_evidence": assessment.get("reference_evidence", ""),
+                "next_review_date": assessment.get("next_review_date", ""),
+                "updated_at": assessment.get("updated_at") or control.get("updated_at"),
+                "created_at": control.get("created_at")
+            }
+
+            items.append({
+                "node": node,
+                "relationships": []
+            })
+
+        return sanitize_for_json({
+            "total": total,
+            "skip": skip,
+            "limit": limit,
+            "items": items
+        })
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/data/complaince/{item_id}")
+async def get_complaince_item(
+    item_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get a single compliance item (control with assessment data) by control ID.
+    """
+    org_id = current_user.get("org_id")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="Organization ID not found in user token")
+
+    try:
+        # Query to get control with its assessment for this org
+        query = """
+        MATCH (c:control {id: $item_id})
+        OPTIONAL MATCH (ca:control_assessment {control_id: c.control_id, organization_id: $org_id})
+        OPTIONAL MATCH (f:framework)-[:owns]->(c)
+        RETURN c, ca, f.framework_name AS framework_name
+        """
+
+        result = await db.run(query, item_id=item_id, org_id=org_id)
+        record = await result.single()
+
+        if not record or not record["c"]:
+            raise HTTPException(status_code=404, detail="Item not found")
+
+        control = dict(record["c"])
+        assessment = dict(record["ca"]) if record["ca"] else {}
+
+        node = {
+            "id": control.get("id"),
+            "control_id": control.get("control_id"),
+            "control_name": control.get("control_name"),
+            "category": control.get("category"),
+            "sub_category": control.get("sub_category"),
+            "framework": record.get("framework_name"),
+            "confidentiality": control.get("confidentiality", "No"),
+            "integrity": control.get("integrity", "No"),
+            "availability": control.get("availability", "No"),
+            "control_applicable": assessment.get("control_applicable", control.get("control_applicable", "Yes")),
+            "rating": assessment.get("control_rating", "Low"),
+            "compliance_status": assessment.get("control_compliance", "Non Compliant"),
+            "control_assessment": assessment.get("control_assessment"),
+            "remarks": assessment.get("remarks", ""),
+            "observation": assessment.get("observation", ""),
+            "reference_evidence": assessment.get("reference_evidence", ""),
+            "next_review_date": assessment.get("next_review_date", ""),
+            "updated_at": assessment.get("updated_at") or control.get("updated_at"),
+            "created_at": control.get("created_at")
+        }
+
+        return {
+            "node": node,
+            "relationships": []
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/data/complaince/{item_id}")
+async def update_complaince_item(
+    item_id: str,
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Update compliance data (control_assessment) for a control.
+    This updates or creates the control_assessment node for the current organization.
+    """
+    # Use the existing control update logic which handles control_assessment
+    crud = GenericCRUD(db, "control", current_user)
+
+    # First get the control to get its control_id
+    control = await crud.get_by_id(item_id)
+    if not control:
+        raise HTTPException(status_code=404, detail="Control not found")
+
+    control_node = control.get("node", {})
+    data["control_id"] = control_node.get("control_id")
+
+    updated = await crud.update(item_id, data)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Item not found or not updated")
+
+    return updated
+
+
+# ============== GENERIC CRUD ROUTES ==============
+
 @router.post("/data/{doctype}")
 async def create_item(
     doctype: str,
     data: dict,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
-    crud = GenericCRUD(db, doctype)
+    crud = GenericCRUD(db, doctype, current_user)
     try:
         result = await crud.create(data)
         if not result:
@@ -245,7 +468,7 @@ async def delete_items(
 async def delete_all_items(
     doctype: str,
     db: AsyncSession = Depends(get_db),
-    
+
 ):
     """
     Delete ALL items of a specific doctype. Only super_admin can perform this action.

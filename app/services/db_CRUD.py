@@ -123,7 +123,9 @@ class GenericCRUD:
                 "related_vulnerabilities": [vulnerability_id],
                 "control_ids": [control_id],
                 "ease_of_exploitation": ease_of_exploitation,
-                "residual_risk": residual_risk
+                "residual_risk": residual_risk,
+                "organization_id": asset_data.get("organization_id"),
+                "is_deleted": "false"
             }
             
             # Create risk node
@@ -284,6 +286,14 @@ class GenericCRUD:
         data["created_at"] = now
         data["updated_at"] = now
 
+        # Set organization_id for vulnerability, risks, threat, assets
+        if self.doctype in ["vulnerability", "risks", "threat", "assets"]:
+            if self.current_user:
+                data["organization_id"] = self.current_user.get("org_id")
+            # Set is_deleted to false for vulnerability and risks
+            if self.doctype in ["vulnerability", "risks"]:
+                data["is_deleted"] = "false"
+
 
         # Special handling for control: keep control_id as string to preserve values like "5.10"
         if self.doctype == "control" and "control_id" in data:
@@ -346,6 +356,15 @@ class GenericCRUD:
         where_clauses = []
         params = {"skip": skip, "limit": limit}
         org_id = current_user.get("org_id")
+
+        # Filter by organization_id for vulnerability, risks, threat, assets
+        if self.doctype in ["vulnerability", "risks", "threat", "assets"] and org_id:
+            where_clauses.append("n.organization_id = $org_id")
+            params["org_id"] = org_id
+
+        # Filter out deleted items for vulnerability and risks
+        if self.doctype in ["vulnerability", "risks"]:
+            where_clauses.append("(n.is_deleted IS NULL OR n.is_deleted = 'false')")
 
         filterable_fields = {f["fieldname"]: f for f in self.schema["fields"] if f.get("is_filter")}
         for i, (key, value) in enumerate(filters.items()):
@@ -562,7 +581,62 @@ class GenericCRUD:
                 "relationships": record["relationships"]
             }
         return None
+
     async def delete(self, item_id: str):
+        # Special handling for vulnerability soft-delete
+        if self.doctype == "vulnerability":
+            # First, get the vulnerability's organization_id
+            get_vuln_query = """
+            MATCH (v:vulnerability {id: $item_id})
+            RETURN v.organization_id AS org_id
+            """
+            vuln_result = await self.session.run(get_vuln_query, item_id=item_id)
+            vuln_record = await vuln_result.single()
+
+            if vuln_record:
+                org_id = vuln_record.get("org_id")
+
+                # Soft-delete all risks associated with this vulnerability
+                soft_delete_risks_query = """
+                MATCH (r:risks)
+                WHERE $vuln_id IN r.related_vulnerabilities AND r.organization_id = $org_id
+                SET r.is_deleted = 'true'
+                RETURN count(r) AS deleted_count
+                """
+                await self.session.run(soft_delete_risks_query, vuln_id=item_id, org_id=org_id)
+
+                # Remove CAUSES_THREAT relationships and update threat nodes
+                remove_threat_rel_query = """
+                MATCH (v:vulnerability {id: $item_id})-[r:CAUSES_THREAT]->(t:threat)
+                WHERE t.vulnerabilities IS NOT NULL AND $item_id IN t.vulnerabilities
+                SET t.vulnerabilities = [vuln IN t.vulnerabilities WHERE vuln <> $item_id]
+                DELETE r
+                RETURN count(r) AS deleted_relationships
+                """
+                await self.session.run(remove_threat_rel_query, item_id=item_id)
+
+            # Soft-delete the vulnerability
+            query = """
+            MATCH (n:vulnerability {id: $item_id})
+            SET n.is_deleted = 'true'
+            RETURN COUNT(n) AS deleted_count
+            """
+            result = await self.session.run(query, item_id=item_id)
+            deleted = await result.single()
+            return deleted["deleted_count"]
+
+        # Soft-delete for risks
+        if self.doctype == "risks":
+            query = f"""
+            MATCH (n:{self.doctype} {{id: $item_id}})
+            SET n.is_deleted = 'true'
+            RETURN COUNT(n) AS deleted_count
+            """
+            result = await self.session.run(query, item_id=item_id)
+            deleted = await result.single()
+            return deleted["deleted_count"]
+
+        # Hard delete for other doctypes
         query = f"""
         MATCH (n:{self.doctype} {{id: $item_id}})
         DETACH DELETE n
@@ -571,13 +645,26 @@ class GenericCRUD:
         result = await self.session.run(query, item_id=item_id)
         deleted = await result.single()
         return deleted["deleted_count"]
-    
+
 
     async def delete_all(self):
         """
         Delete all nodes of this doctype.
         Returns number of deleted items.
         """
+        # Soft-delete for vulnerability and risks
+        if self.doctype in ["vulnerability", "risks"]:
+            query = f"""
+            MATCH (n:{self.doctype})
+            WITH n, count(n) AS cnt
+            SET n.is_deleted = 'true'
+            RETURN cnt
+            """
+            result = await self.session.run(query)
+            record = await result.single()
+            return record["cnt"] if record else 0
+
+        # Hard delete for other doctypes
         query = f"""
         MATCH (n:{self.doctype})
         WITH n, count(n) AS cnt
@@ -598,6 +685,64 @@ class GenericCRUD:
         if not item_ids:
             return 0
 
+        # Special handling for vulnerability bulk delete
+        if self.doctype == "vulnerability":
+            # For each vulnerability, soft-delete associated risks and remove CAUSES_THREAT relationships
+            for vuln_id in item_ids:
+                # Get the vulnerability's organization_id
+                get_vuln_query = """
+                MATCH (v:vulnerability {id: $vuln_id})
+                RETURN v.organization_id AS org_id
+                """
+                vuln_result = await self.session.run(get_vuln_query, vuln_id=vuln_id)
+                vuln_record = await vuln_result.single()
+
+                if vuln_record:
+                    org_id = vuln_record.get("org_id")
+
+                    # Soft-delete all risks associated with this vulnerability
+                    soft_delete_risks_query = """
+                    MATCH (r:risks)
+                    WHERE $vuln_id IN r.related_vulnerabilities AND r.organization_id = $org_id
+                    SET r.is_deleted = 'true'
+                    """
+                    await self.session.run(soft_delete_risks_query, vuln_id=vuln_id, org_id=org_id)
+
+                # Remove CAUSES_THREAT relationships and update threat nodes
+                remove_threat_rel_query = """
+                MATCH (v:vulnerability {id: $vuln_id})-[r:CAUSES_THREAT]->(t:threat)
+                WHERE t.vulnerabilities IS NOT NULL AND $vuln_id IN t.vulnerabilities
+                SET t.vulnerabilities = [vuln IN t.vulnerabilities WHERE vuln <> $vuln_id]
+                DELETE r
+                """
+                await self.session.run(remove_threat_rel_query, vuln_id=vuln_id)
+
+            # Soft-delete the vulnerabilities
+            query = """
+            MATCH (n:vulnerability)
+            WHERE n.id IN $item_ids
+            WITH n, count(n) AS cnt
+            SET n.is_deleted = 'true'
+            RETURN cnt
+            """
+            result = await self.session.run(query, item_ids=item_ids)
+            record = await result.single()
+            return record["cnt"] if record else 0
+
+        # Soft-delete for risks
+        if self.doctype == "risks":
+            query = f"""
+            MATCH (n:{self.doctype})
+            WHERE n.id IN $item_ids
+            WITH n, count(n) AS cnt
+            SET n.is_deleted = 'true'
+            RETURN cnt
+            """
+            result = await self.session.run(query, item_ids=item_ids)
+            record = await result.single()
+            return record["cnt"] if record else 0
+
+        # Hard delete for other doctypes
         query = f"""
         MATCH (n:{self.doctype})
         WHERE n.id IN $item_ids
@@ -777,7 +922,39 @@ class GenericCRUD:
                     organization_id=assessment_data["organization_id"],
                     assessment_data=assessment_data
                 )
-        
+
+        # ✅ Special handling for vulnerability soft-delete via update
+        if self.doctype == "vulnerability" and data.get("is_deleted") == "true":
+            # Get the vulnerability's organization_id
+            get_vuln_query = """
+            MATCH (v:vulnerability {id: $item_id})
+            RETURN v.organization_id AS org_id
+            """
+            vuln_result = await self.session.run(get_vuln_query, item_id=item_id)
+            vuln_record = await vuln_result.single()
+
+            if vuln_record:
+                org_id = vuln_record.get("org_id")
+
+                # Soft-delete all risks associated with this vulnerability
+                soft_delete_risks_query = """
+                MATCH (r:risks)
+                WHERE $vuln_id IN r.related_vulnerabilities AND r.organization_id = $org_id
+                SET r.is_deleted = 'true'
+                RETURN count(r) AS deleted_count
+                """
+                await self.session.run(soft_delete_risks_query, vuln_id=item_id, org_id=org_id)
+
+                # Remove CAUSES_THREAT relationships and update threat nodes
+                remove_threat_rel_query = """
+                MATCH (v:vulnerability {id: $item_id})-[r:CAUSES_THREAT]->(t:threat)
+                WHERE t.vulnerabilities IS NOT NULL AND $item_id IN t.vulnerabilities
+                SET t.vulnerabilities = [vuln IN t.vulnerabilities WHERE vuln <> $item_id]
+                DELETE r
+                RETURN count(r) AS deleted_relationships
+                """
+                await self.session.run(remove_threat_rel_query, item_id=item_id)
+
         # ✅ Generic update logic for all doctypes
         query = f"""
         MATCH (n:{self.doctype} {{id: $item_id}})
@@ -973,22 +1150,24 @@ class GenericCRUD:
     async def _handle_compliant_control_trigger(self, control_id: str, organization_id: str):
         """
         When a control assessment becomes Compliant:
-        1. Find all vulnerabilities connected to this control
+        1. Find all vulnerabilities connected to this control for this organization
         2. For each vulnerability, check if ALL connected controls are compliant for this org
-        3. If all controls are compliant, delete the vulnerability and its associated risks
+        3. If all controls are compliant, soft-delete the vulnerability and its associated risks
         """
-        print(f"[TRIGGER] Control {control_id} is Compliant. Checking connected vulnerabilities...")
+        print(f"[TRIGGER] Control {control_id} is Compliant. Checking connected vulnerabilities for org {organization_id}...")
 
         # Find all vulnerabilities connected to this control via MITIGATES relationship
+        # Only process vulnerabilities belonging to this organization and not already deleted
         vuln_query = """
         MATCH (c:control {id: $control_id})-[:MITIGATES]->(v:vulnerability)
+        WHERE v.organization_id = $org_id AND (v.is_deleted IS NULL OR v.is_deleted = 'false')
         RETURN v.id AS vulnerability_id
         """
-        result = await self.session.run(vuln_query, control_id=control_id)
+        result = await self.session.run(vuln_query, control_id=control_id, org_id=organization_id)
         vulnerabilities = await result.data()
 
         if not vulnerabilities:
-            print(f"[TRIGGER] No vulnerabilities connected to control {control_id}")
+            print(f"[TRIGGER] No vulnerabilities connected to control {control_id} for org {organization_id}")
             return
 
         for vuln in vulnerabilities:
@@ -1029,27 +1208,40 @@ class GenericCRUD:
                     break
 
             if all_compliant:
-                print(f"[TRIGGER] All controls for vulnerability {vuln_id} are compliant. Deleting vulnerability and associated risks...")
-                
-                # Delete all risks associated with this vulnerability
-                delete_risks_query = """
+                print(f"[TRIGGER] All controls for vulnerability {vuln_id} are compliant. Soft-deleting vulnerability and associated risks for organization {organization_id}...")
+
+                # Soft-delete all risks associated with this vulnerability for this organization
+                soft_delete_risks_query = """
                 MATCH (r:risks)
-                WHERE $vuln_id IN r.related_vulnerabilities
-                DETACH DELETE r
+                WHERE $vuln_id IN r.related_vulnerabilities AND r.organization_id = $org_id
+                SET r.is_deleted = 'true'
                 RETURN count(r) AS deleted_count
                 """
-                risks_result = await self.session.run(delete_risks_query, vuln_id=vuln_id)
+                risks_result = await self.session.run(soft_delete_risks_query, vuln_id=vuln_id, org_id=organization_id)
                 risks_record = await risks_result.single()
                 deleted_risks = risks_record["deleted_count"] if risks_record else 0
-                print(f"[TRIGGER] Deleted {deleted_risks} risks associated with vulnerability {vuln_id}")
+                print(f"[TRIGGER] Soft-deleted {deleted_risks} risks associated with vulnerability {vuln_id}")
 
-                # Delete the vulnerability
-                delete_vuln_query = """
-                MATCH (v:vulnerability {id: $vuln_id})
-                DETACH DELETE v
+                # Remove CAUSES_THREAT relationships and update threat nodes
+                remove_threat_rel_query = """
+                MATCH (v:vulnerability {id: $vuln_id})-[r:CAUSES_THREAT]->(t:threat)
+                WHERE t.vulnerabilities IS NOT NULL AND $vuln_id IN t.vulnerabilities
+                SET t.vulnerabilities = [vuln IN t.vulnerabilities WHERE vuln <> $vuln_id]
+                DELETE r
+                RETURN count(r) AS deleted_relationships
+                """
+                rel_result = await self.session.run(remove_threat_rel_query, vuln_id=vuln_id)
+                rel_record = await rel_result.single()
+                deleted_rels = rel_record["deleted_relationships"] if rel_record else 0
+                print(f"[TRIGGER] Removed {deleted_rels} CAUSES_THREAT relationships from vulnerability {vuln_id}")
+
+                # Soft-delete the vulnerability for this organization
+                soft_delete_vuln_query = """
+                MATCH (v:vulnerability {id: $vuln_id, organization_id: $org_id})
+                SET v.is_deleted = 'true'
                 RETURN count(v) AS deleted_count
                 """
-                vuln_delete_result = await self.session.run(delete_vuln_query, vuln_id=vuln_id)
+                vuln_delete_result = await self.session.run(soft_delete_vuln_query, vuln_id=vuln_id, org_id=organization_id)
                 vuln_delete_record = await vuln_delete_result.single()
                 deleted_vulns = vuln_delete_record["deleted_count"] if vuln_delete_record else 0
-                print(f"[TRIGGER] Deleted vulnerability {vuln_id}")
+                print(f"[TRIGGER] Soft-deleted vulnerability {vuln_id} for organization {organization_id}")

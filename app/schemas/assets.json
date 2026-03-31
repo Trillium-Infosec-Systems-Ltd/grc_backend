@@ -2,6 +2,16 @@
   "doctype": "Asset",
   "fields": [
     {
+      "fieldname": "organization_id",
+      "fieldtype": "Data",
+      "label": "Organization ID",
+      "required": false,
+      "display_on_frontend": false,
+      "hidden": true,
+      "span": 12,
+      "is_filter": true
+    },
+    {
       "fieldname": "asset_name",
       "fieldtype": "Data",
       "label": "Asset Name",

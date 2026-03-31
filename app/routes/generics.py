@@ -40,6 +40,7 @@ async def get_link_options(
         filter_for_doctype: Optional[str] = Query(None, description="Limits results to values used in this doctype (auto-detects field)"),
         offset: int = Query(0, ge=0),
         driver: AsyncDriver = Depends(get_db),
+        current_user: dict = Depends(get_current_user)
 ):
     limit = 20
 
@@ -76,7 +77,8 @@ async def get_link_options(
             filters=filters,
             limit=limit,
             offset=offset,
-            filter_for_doctype=filter_for_doctype
+            filter_for_doctype=filter_for_doctype,
+            current_user=current_user
         )
         return data
 

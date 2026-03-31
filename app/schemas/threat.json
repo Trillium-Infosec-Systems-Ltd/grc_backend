@@ -1,8 +1,16 @@
- 
 {
-  
     "doctype": "Threat",
     "fields": [
+      {
+        "fieldname": "organization_id",
+        "fieldtype": "Data",
+        "label": "Organization ID",
+        "required": false,
+        "display_on_frontend": false,
+        "hidden": true,
+        "span": 12,
+        "is_filter": true
+      },
       {
         "fieldname": "threat_name",
         "fieldtype": "Data",

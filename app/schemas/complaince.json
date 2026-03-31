@@ -1,133 +1,177 @@
-
 {
-    "doctype": "Compliance",
-    "fields": [
-      {
-        "fieldname": "clause",
-        "fieldtype": "Data",
-        "label": "Clause",
-        "display_on_frontend": true,
-        "required": true,
-        "span": 12,
-       "is_filter":true
-      },
-      {
-        "fieldname": "clause_id",
-        "fieldtype": "Data",
-        "label": "Clause ID",
-        "display_on_frontend": true,
-        "required": true,
-        "span": 12,
-       "is_filter":true
-      },
-      {
-        "fieldname": "framework",
-        "fieldtype": "Select",
-        "label": "Framework",
-        "options": ["NIST CSF", "ISO 27001", "PCI DSS", "HIPAA"],
-        "default": "NIST CSF",
-        "display_on_frontend": false,
-        "required": true,
-        "span": 12
-      },
-      {
-        "fieldname": "description",
-        "fieldtype": "LongText",
-        "label": "Description",
-        "display_on_frontend": false,
-        "required": true,
-        "span": 12
-      },
-      {
-        "fieldname": "responsibility",
-        "fieldtype": "Data",
-        "label": "Responsibility",
-        "display_on_frontend": false,
-        "required": true,
-        "span": 12
-      },
-      {
-        "fieldname": "last_updated",
-        "fieldtype": "Date",
-        "label": "Last Updated",
-        "display_on_frontend": false,
-        "required": true,
-        "span": 12
-      },
-      {
-        "fieldname": "next_review_date",
-        "fieldtype": "Date",
-        "label": "Next Review Date",
-        "display_on_frontend": false,
-        "required": true,
-        "span": 12
-      },
-      {
-        "fieldname": "audit_requirements",
-        "fieldtype": "LongText",
-        "label": "Clause Audit Requirements",
-        "display_on_frontend": false,
-        "span": 12
-      },
-      {
-        "fieldname": "linked_policies",
-        "fieldtype": "MultiLink",
-        "label": "Linked Policies",
-        "link_to": "Policy",
-        "relationship_type": "SUPPORTS",
-        "relation_direction": "incoming",
-        "display_on_frontend": false,
-        "span": 12
-      },
-      {
-        "fieldname": "attached_files",
-        "fieldtype": "File",
-        "label": "Attached Evidence / Files",
-        "display_on_frontend": false,
-        "span": 12
-      },
-      {
-        "fieldname": "tools_in_use",
-        "fieldtype": "MultiSelect",
-        "label": "Tools in Use",
-        "options": ["Okta", "Microsoft Azure AD", "Google Workspace Admin Console", "Other"],
-        "display_on_frontend": false,
-        "span": 12
-      },
-      {
-        "fieldname": "compliance_status",
-        "fieldtype": "Select",
-        "label": "Compliance Status",
-        "options": ["Compliant", "Partially Compliant", "Non-Compliant"],
-        "default": "Compliant",
-        "display_on_frontend": true,
-        "is_colorful": true,
-        "span": 12,
-       "is_filter":true
-      },
-      {
-        "fieldname": "compliance_questions",
-        "fieldtype": "Table",
-        "label": "Compliance Requirements",
-        "child_doctype": "Compliance Question",
-        "display_on_frontend": false,
-        "span": 12
-      },
-      {
-        "fieldname": "created_at",
-        "fieldtype": "Datetime",
-        "label": "Created at",
-        "default_label": false,
-        "display_on_frontend": false,
-        "hidden": true
-      },
-      {
-        "fieldname": "updated_at",
-        "fieldtype": "Datetime",
-        "label": "Updated at",
-        "default_label": false,
-        "display_on_frontend": false,
-        "hidden": true
-      }
-    ]
-  }
+  "doctype": "Compliance",
+  "fields": [
+    {
+      "fieldname": "control_id",
+      "fieldtype": "Data",
+      "label": "Control ID",
+      "display_on_frontend": true,
+      "span": 12,
+      "required": true,
+      "is_filter": true
+    },
+    {
+      "fieldname": "control_name",
+      "fieldtype": "Data",
+      "label": "Control Name",
+      "display_on_frontend": true,
+      "span": 12,
+      "required": true,
+      "is_filter": true
+    },
+    {
+      "fieldname": "category",
+      "fieldtype": "Data",
+      "label": "Category",
+      "display_on_frontend": true,
+      "span": 12,
+      "required": true,
+      "is_filter": true
+    },
+    {
+      "fieldname": "sub_category",
+      "fieldtype": "Data",
+      "label": "Sub Category",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "framework",
+      "label": "Framework",
+      "fieldtype": "Link",
+      "link_to": "framework",
+      "target_field": "framework_name",
+      "span": 12,
+      "required": true,
+      "display_on_frontend": true,
+      "relationship_direction": "incoming",
+      "relationship_type": "owns",
+      "is_filter": true
+    },
+    {
+      "fieldname": "confidentiality",
+      "fieldtype": "Radio",
+      "label": "Confidentiality",
+      "options": ["Yes", "No"],
+      "display_on_frontend": true,
+      "required": false,
+      "span": 12,
+      "default": "No",
+      "is_filter": true
+    },
+    {
+      "fieldname": "integrity",
+      "fieldtype": "Radio",
+      "label": "Integrity",
+      "options": ["Yes", "No"],
+      "display_on_frontend": true,
+      "required": false,
+      "span": 12,
+      "default": "No",
+      "is_filter": true
+    },
+    {
+      "fieldname": "availability",
+      "fieldtype": "Radio",
+      "label": "Availability",
+      "options": ["Yes", "No"],
+      "display_on_frontend": true,
+      "required": false,
+      "span": 12,
+      "default": "No",
+      "is_filter": true
+    },
+    {
+      "fieldname": "control_applicable",
+      "fieldtype": "Radio",
+      "label": "Control Applicable",
+      "options": ["Yes", "No"],
+      "display_on_frontend": true,
+      "required": true,
+      "span": 12,
+      "default": "Yes"
+    },
+    {
+      "fieldname": "rating",
+      "fieldtype": "Select",
+      "label": "Control Rating",
+      "options": ["Low", "Medium", "High"],
+      "required": false,
+      "span": 12,
+      "display_on_frontend": true,
+      "default": "Low",
+      "is_filter": true
+    },
+    {
+      "fieldname": "compliance_status",
+      "fieldtype": "Select",
+      "label": "Compliance Status",
+      "options": ["Non Compliant", "Partially Compliant", "Compliant"],
+      "default": "Non Compliant",
+      "required": false,
+      "span": 12,
+      "display_on_frontend": true,
+      "is_colorful": true,
+      "is_filter": true
+    },
+    {
+      "fieldname": "control_assessment",
+      "fieldtype": "question_table",
+      "label": "Control Assessment",
+      "span": 24,
+      "display_on_frontend": false,
+      "display_on_field": "control_applicable",
+      "display_on_value": "Yes"
+    },
+    {
+      "fieldname": "remarks",
+      "fieldtype": "LongText",
+      "label": "Remarks",
+      "span": 12,
+      "display_on_frontend": false
+    },
+    {
+      "fieldname": "observation",
+      "fieldtype": "LongText",
+      "label": "Observation",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "reference_evidence",
+      "fieldtype": "LongText",
+      "label": "Reference Evidence",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "next_review_date",
+      "fieldtype": "Date",
+      "label": "Next Review Date",
+      "display_on_frontend": false,
+      "span": 12,
+      "required": false
+    },
+    {
+      "fieldname": "updated_at",
+      "fieldtype": "Data",
+      "label": "Updated at",
+      "default_label": false,
+      "display_on_frontend": false,
+      "span": 12,
+      "hidden": true
+    },
+    {
+      "fieldname": "created_at",
+      "fieldtype": "Data",
+      "label": "Created at",
+      "default_label": false,
+      "display_on_frontend": false,
+      "span": 12,
+      "hidden": true
+    }
+  ]
+}

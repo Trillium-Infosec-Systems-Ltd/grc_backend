@@ -6,7 +6,7 @@ import json
 
 
 
-async def get_link_options_service( 
+async def get_link_options_service(
     driver: AsyncDriver,
     document_type: str,
     search_fields: list[tuple[str, str]],
@@ -14,6 +14,7 @@ async def get_link_options_service(
     limit: int = 10,
     offset: int = 0,
     filter_for_doctype: str = None,
+    current_user: dict = None,
 ):
     try:
         filter_conditions = []
@@ -21,6 +22,17 @@ async def get_link_options_service(
             "limit": limit,
             "offset": offset,
         }
+
+        # Filter by organization_id for vulnerability, risks, threat, assets
+        if document_type in ["vulnerability", "risks", "threat", "assets"] and current_user:
+            org_id = current_user.get("org_id")
+            if org_id:
+                filter_conditions.append("n.organization_id = $org_id")
+                params["org_id"] = org_id
+
+        # Filter out deleted items for vulnerability and risks
+        if document_type in ["vulnerability", "risks"]:
+            filter_conditions.append("(n.is_deleted IS NULL OR n.is_deleted = 'false')")
 
         # If filter_for_doctype is specified, auto-detect the field that links to document_type
         # and limit results to values that exist in that doctype
