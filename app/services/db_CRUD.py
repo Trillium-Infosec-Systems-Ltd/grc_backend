@@ -35,10 +35,13 @@ class GenericCRUD:
         
         # Query to get all combinations: control -> vulnerability -> threat
         # for the given controls attached to this asset
+        # Only include active (not soft-deleted) vulnerabilities and threats
         chain_query = """
         MATCH (c:control)-[:MITIGATES]->(v:vulnerability)-[:CAUSES_THREAT]->(t:threat)
         WHERE c.id IN $control_ids
-        RETURN c.id AS control_id, 
+        AND (v.is_deleted IS NULL OR v.is_deleted = 'false')
+        AND (t.is_deleted IS NULL OR t.is_deleted = 'false')
+        RETURN c.id AS control_id,
                c.rating AS control_rating,
                v.id AS vulnerability_id,
                v.vulnerability_name AS vulnerability_name,
@@ -290,8 +293,8 @@ class GenericCRUD:
         if self.doctype in ["vulnerability", "risks", "threat", "assets"]:
             if self.current_user:
                 data["organization_id"] = self.current_user.get("org_id")
-            # Set is_deleted to false for vulnerability and risks
-            if self.doctype in ["vulnerability", "risks"]:
+            # Set is_deleted to false for vulnerability, risks, and threat
+            if self.doctype in ["vulnerability", "risks", "threat"]:
                 data["is_deleted"] = "false"
 
 
@@ -362,8 +365,8 @@ class GenericCRUD:
             where_clauses.append("n.organization_id = $org_id")
             params["org_id"] = org_id
 
-        # Filter out deleted items for vulnerability and risks
-        if self.doctype in ["vulnerability", "risks"]:
+        # Filter out deleted items for vulnerability, risks, and threat
+        if self.doctype in ["vulnerability", "risks", "threat"]:
             where_clauses.append("(n.is_deleted IS NULL OR n.is_deleted = 'false')")
 
         filterable_fields = {f["fieldname"]: f for f in self.schema["fields"] if f.get("is_filter")}
@@ -541,7 +544,7 @@ class GenericCRUD:
                 if self.doctype == "control":
                     if not control_assesment_flag:
                         node["rating"] = "Low"
-                        node["compliance_status"] = "Non-Compliant"
+                        node["compliance_status"] = "Non Compliant"
 
             items.append({
                 "node": node,
@@ -867,6 +870,10 @@ class GenericCRUD:
             if data.get("compliance_status") == "Compliant":
                 await self._handle_compliant_control_trigger(item_id, assessment_data["organization_id"])
 
+            # Trigger: When control becomes Non Compliant, restore vulnerabilities
+            if data.get("compliance_status") == "Non Compliant":
+                await self._handle_non_compliant_control_trigger(item_id, assessment_data["organization_id"])
+
         if self.doctype == "control" and data.get("control_assessment") is None:
            # Serialize
             data["updated_at"] = now  # Already set, but reinforces clarity
@@ -882,7 +889,7 @@ class GenericCRUD:
                 "next_review_date": data.get("next_review_date", ""),
                 "control_applicable": data.get("control_applicable", "Yes"),
                 "control_rating": data["rating"],
-                "control_compliance":"Non-Compliant",
+                "control_compliance":"Non Compliant",
                 "created_at": now,
                 "updated_at": now
             }
@@ -922,6 +929,9 @@ class GenericCRUD:
                     organization_id=assessment_data["organization_id"],
                     assessment_data=assessment_data
                 )
+
+            # Trigger: When control_assessment is None, default is Non Compliant, so restore vulnerabilities
+            await self._handle_non_compliant_control_trigger(item_id, assessment_data["organization_id"])
 
         # ✅ Special handling for vulnerability soft-delete via update
         if self.doctype == "vulnerability" and data.get("is_deleted") == "true":
@@ -1210,6 +1220,18 @@ class GenericCRUD:
             if all_compliant:
                 print(f"[TRIGGER] All controls for vulnerability {vuln_id} are compliant. Soft-deleting vulnerability and associated risks for organization {organization_id}...")
 
+                # First, store the connected threat IDs in the vulnerability node before removing relationships
+                store_threat_ids_query = """
+                MATCH (v:vulnerability {id: $vuln_id})-[:CAUSES_THREAT]->(t:threat)
+                WITH v, collect(t.id) AS threat_ids
+                SET v.archived_threat_ids = threat_ids
+                RETURN threat_ids
+                """
+                store_result = await self.session.run(store_threat_ids_query, vuln_id=vuln_id)
+                store_record = await store_result.single()
+                archived_threats = store_record["threat_ids"] if store_record else []
+                print(f"[TRIGGER] Stored {len(archived_threats)} threat IDs in vulnerability {vuln_id} for future restoration")
+
                 # Soft-delete all risks associated with this vulnerability for this organization
                 soft_delete_risks_query = """
                 MATCH (r:risks)
@@ -1235,13 +1257,222 @@ class GenericCRUD:
                 deleted_rels = rel_record["deleted_relationships"] if rel_record else 0
                 print(f"[TRIGGER] Removed {deleted_rels} CAUSES_THREAT relationships from vulnerability {vuln_id}")
 
-                # Soft-delete the vulnerability for this organization
+                # Soft-delete the vulnerability for this organization (mark as deleted by compliance)
                 soft_delete_vuln_query = """
                 MATCH (v:vulnerability {id: $vuln_id, organization_id: $org_id})
-                SET v.is_deleted = 'true'
+                SET v.is_deleted = 'true', v.deleted_by_compliance = 'true'
                 RETURN count(v) AS deleted_count
                 """
                 vuln_delete_result = await self.session.run(soft_delete_vuln_query, vuln_id=vuln_id, org_id=organization_id)
                 vuln_delete_record = await vuln_delete_result.single()
                 deleted_vulns = vuln_delete_record["deleted_count"] if vuln_delete_record else 0
                 print(f"[TRIGGER] Soft-deleted vulnerability {vuln_id} for organization {organization_id}")
+
+                # Soft-delete associated threats that have no other active vulnerabilities
+                # Only soft-delete threats that belong to this organization and have no other non-deleted vulnerabilities
+                for threat_id in archived_threats:
+                    check_other_vulns_query = """
+                    MATCH (v:vulnerability)-[:CAUSES_THREAT]->(t:threat {id: $threat_id})
+                    WHERE v.organization_id = $org_id AND (v.is_deleted IS NULL OR v.is_deleted = 'false')
+                    RETURN count(v) AS active_vuln_count
+                    """
+                    check_result = await self.session.run(check_other_vulns_query, threat_id=threat_id, org_id=organization_id)
+                    check_record = await check_result.single()
+                    active_vuln_count = check_record["active_vuln_count"] if check_record else 0
+
+                    if active_vuln_count == 0:
+                        # No other active vulnerabilities connected to this threat, safe to soft-delete
+                        soft_delete_threat_query = """
+                        MATCH (t:threat {id: $threat_id, organization_id: $org_id})
+                        SET t.is_deleted = 'true', t.deleted_by_compliance = 'true'
+                        RETURN count(t) AS deleted_count
+                        """
+                        threat_delete_result = await self.session.run(soft_delete_threat_query, threat_id=threat_id, org_id=organization_id)
+                        threat_delete_record = await threat_delete_result.single()
+                        deleted_threats = threat_delete_record["deleted_count"] if threat_delete_record else 0
+                        if deleted_threats > 0:
+                            print(f"[TRIGGER] Soft-deleted threat {threat_id} (no other active vulnerabilities)")
+                    else:
+                        print(f"[TRIGGER] Threat {threat_id} has {active_vuln_count} other active vulnerabilities, not deleting")
+
+    async def _handle_non_compliant_control_trigger(self, control_id: str, organization_id: str):
+        """
+        When a control assessment becomes Non-Compliant (reverse of compliant trigger):
+        1. Find all soft-deleted vulnerabilities connected to this control for this organization
+        2. For each vulnerability, check if ANY connected control is non-compliant for this org
+        3. If any control is non-compliant, restore the vulnerability, threat relationships, and associated risks
+        """
+        print(f"[TRIGGER] Control {control_id} is Non-Compliant. Checking soft-deleted vulnerabilities for org {organization_id}...")
+
+        # Find all soft-deleted vulnerabilities connected to this control via MITIGATES relationship
+        # Only process vulnerabilities that were soft-deleted BY COMPLIANCE (not user-deleted)
+        vuln_query = """
+        MATCH (c:control {id: $control_id})-[:MITIGATES]->(v:vulnerability)
+        WHERE v.organization_id = $org_id AND v.is_deleted = 'true' AND v.deleted_by_compliance = 'true'
+        RETURN v.id AS vulnerability_id
+        """
+        result = await self.session.run(vuln_query, control_id=control_id, org_id=organization_id)
+        vulnerabilities = await result.data()
+
+        if not vulnerabilities:
+            print(f"[TRIGGER] No compliance-deleted vulnerabilities connected to control {control_id} for org {organization_id}")
+            return
+
+        for vuln in vulnerabilities:
+            vuln_id = vuln["vulnerability_id"]
+            print(f"[TRIGGER] Checking soft-deleted vulnerability {vuln_id}...")
+
+            # Get all controls connected to this vulnerability
+            controls_query = """
+            MATCH (c:control)-[:MITIGATES]->(v:vulnerability {id: $vuln_id})
+            RETURN c.id AS control_id, c.control_id AS control_id_value
+            """
+            controls_result = await self.session.run(controls_query, vuln_id=vuln_id)
+            connected_controls = await controls_result.data()
+
+            if not connected_controls:
+                continue
+
+            # Check if ANY connected control is non-compliant for this organization
+            any_non_compliant = False
+            for ctrl in connected_controls:
+                ctrl_id_value = ctrl["control_id_value"]
+
+                # Check control_assessment for this control and organization
+                assessment_query = """
+                MATCH (a:control_assessment {control_id: $control_id, organization_id: $org_id})
+                RETURN a.control_compliance AS compliance_status
+                """
+                assessment_result = await self.session.run(
+                    assessment_query,
+                    control_id=ctrl_id_value,
+                    org_id=organization_id
+                )
+                assessment_record = await assessment_result.single()
+
+                if assessment_record and assessment_record.get("compliance_status") == "Non Compliant":
+                    any_non_compliant = True
+                    print(f"[TRIGGER] Control {ctrl_id_value} is non compliant. Will restore vulnerability.")
+                    break
+
+            if any_non_compliant:
+                print(f"[TRIGGER] At least one control for vulnerability {vuln_id} is non-compliant. Restoring vulnerability and associated risks for organization {organization_id}...")
+
+                # Restore the vulnerability (set is_deleted to false and remove deleted_by_compliance flag)
+                restore_vuln_query = """
+                MATCH (v:vulnerability {id: $vuln_id, organization_id: $org_id})
+                SET v.is_deleted = 'false'
+                REMOVE v.deleted_by_compliance
+                RETURN count(v) AS restored_count
+                """
+                vuln_restore_result = await self.session.run(restore_vuln_query, vuln_id=vuln_id, org_id=organization_id)
+                vuln_restore_record = await vuln_restore_result.single()
+                restored_vulns = vuln_restore_record["restored_count"] if vuln_restore_record else 0
+                print(f"[TRIGGER] Restored vulnerability {vuln_id} for organization {organization_id}")
+
+                # Restore CAUSES_THREAT relationships using archived_threat_ids
+                # First, get the archived threat IDs
+                get_archived_threats_query = """
+                MATCH (v:vulnerability {id: $vuln_id})
+                WHERE v.archived_threat_ids IS NOT NULL
+                RETURN v.archived_threat_ids AS threat_ids
+                """
+                archived_result = await self.session.run(get_archived_threats_query, vuln_id=vuln_id)
+                archived_record = await archived_result.single()
+                archived_threat_ids = archived_record["threat_ids"] if archived_record else []
+
+                for threat_id in archived_threat_ids:
+                    # Create CAUSES_THREAT relationship if it doesn't exist
+                    restore_rel_query = """
+                    MATCH (v:vulnerability {id: $vuln_id})
+                    MATCH (t:threat {id: $threat_id})
+                    MERGE (v)-[:CAUSES_THREAT]->(t)
+                    WITH v, t
+                    SET t.vulnerabilities = CASE
+                        WHEN t.vulnerabilities IS NULL THEN [$vuln_id]
+                        WHEN NOT $vuln_id IN t.vulnerabilities THEN t.vulnerabilities + $vuln_id
+                        ELSE t.vulnerabilities
+                    END
+                    RETURN t.id AS threat_id
+                    """
+                    await self.session.run(restore_rel_query, vuln_id=vuln_id, threat_id=threat_id)
+                    print(f"[TRIGGER] Restored CAUSES_THREAT relationship for vulnerability {vuln_id} -> threat {threat_id}")
+
+                    # Restore the threat if it was soft-deleted by compliance (not by user)
+                    restore_threat_query = """
+                    MATCH (t:threat {id: $threat_id, organization_id: $org_id})
+                    WHERE t.is_deleted = 'true' AND t.deleted_by_compliance = 'true'
+                    SET t.is_deleted = 'false'
+                    REMOVE t.deleted_by_compliance
+                    RETURN count(t) AS restored_count
+                    """
+                    threat_restore_result = await self.session.run(restore_threat_query, threat_id=threat_id, org_id=organization_id)
+                    threat_restore_record = await threat_restore_result.single()
+                    restored_threat_count = threat_restore_record["restored_count"] if threat_restore_record else 0
+                    if restored_threat_count > 0:
+                        print(f"[TRIGGER] Restored threat {threat_id} for organization {organization_id}")
+
+                    # Deduplicate the vulnerabilities array on the threat
+                    dedupe_query = """
+                    MATCH (t:threat {id: $threat_id})
+                    WHERE t.vulnerabilities IS NOT NULL
+                    WITH t, [x IN t.vulnerabilities WHERE x IS NOT NULL | x] AS vuln_list
+                    WITH t, reduce(acc = [], x IN vuln_list | CASE WHEN x IN acc THEN acc ELSE acc + x END) AS unique_vulns
+                    SET t.vulnerabilities = unique_vulns
+                    RETURN count(t) AS updated
+                    """
+                    await self.session.run(dedupe_query, threat_id=threat_id)
+
+                # Restore all risks associated with this vulnerability for this organization
+                restore_risks_query = """
+                MATCH (r:risks)
+                WHERE $vuln_id IN r.related_vulnerabilities AND r.organization_id = $org_id AND r.is_deleted = 'true'
+                SET r.is_deleted = 'false'
+                RETURN count(r) AS restored_count
+                """
+                risks_result = await self.session.run(restore_risks_query, vuln_id=vuln_id, org_id=organization_id)
+                risks_record = await risks_result.single()
+                restored_risks = risks_record["restored_count"] if risks_record else 0
+                print(f"[TRIGGER] Restored {restored_risks} risks associated with vulnerability {vuln_id}")
+
+                # Recreate risks for affected assets to ensure they reflect current state
+                # Find all assets that have controls mitigating this vulnerability
+                affected_assets_query = """
+                MATCH (c:control)-[:MITIGATES]->(v:vulnerability {id: $vuln_id})
+                MATCH (a:assets)
+                WHERE c.id IN a.security_controls AND a.organization_id = $org_id
+                RETURN DISTINCT a
+                """
+                assets_result = await self.session.run(affected_assets_query, vuln_id=vuln_id, org_id=organization_id)
+                assets_records = await assets_result.data()
+
+                for asset_record in assets_records:
+                    if asset_record.get("a"):
+                        asset_data = dict(asset_record["a"])
+                        asset_id = asset_data.get("id")
+                        if asset_id:
+                            # Delete existing risks for this asset and vulnerability
+                            delete_asset_vuln_risks_query = """
+                            MATCH (r:risks)
+                            WHERE r.associated_assets = $asset_id
+                            AND $vuln_id IN r.related_vulnerabilities
+                            AND r.organization_id = $org_id
+                            DETACH DELETE r
+                            """
+                            await self.session.run(delete_asset_vuln_risks_query, asset_id=asset_id, vuln_id=vuln_id, org_id=organization_id)
+
+                            # Recreate risks for this asset
+                            try:
+                                await self.create_risks_for_asset(asset_data)
+                                print(f"[TRIGGER] Recreated risks for asset {asset_id}")
+                            except Exception as e:
+                                print(f"[ERROR] Failed to recreate risks for asset {asset_id}: {e}")
+
+                # Clear archived_threat_ids after successful restoration
+                clear_archive_query = """
+                MATCH (v:vulnerability {id: $vuln_id})
+                REMOVE v.archived_threat_ids
+                RETURN count(v) AS cleared_count
+                """
+                await self.session.run(clear_archive_query, vuln_id=vuln_id)
+                print(f"[TRIGGER] Cleared archived threat IDs from vulnerability {vuln_id}")

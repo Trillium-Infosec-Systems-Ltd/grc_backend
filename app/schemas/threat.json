@@ -12,6 +12,16 @@
         "is_filter": true
       },
       {
+        "fieldname": "is_deleted",
+        "fieldtype": "Data",
+        "label": "Is Deleted",
+        "required": false,
+        "display_on_frontend": false,
+        "hidden": true,
+        "span": 12,
+        "default": "false"
+      },
+      {
         "fieldname": "threat_name",
         "fieldtype": "Data",
         "label": "Threat Name",
