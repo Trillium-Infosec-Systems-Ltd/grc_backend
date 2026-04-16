@@ -24,14 +24,36 @@ async def get_link_options_service(
         }
 
         # Filter by organization_id for vulnerability, risks, threat, assets
-        if document_type in ["vulnerability", "risks", "threat", "assets"] and current_user:
+        # For vulnerability and threat: Also include global items (no org_id) that are not deleted for this org
+        if document_type in ["vulnerability", "threat"] and current_user:
+            org_id = current_user.get("org_id")
+            if org_id:
+                filter_conditions.append("""(
+                    n.organization_id = $org_id
+                    OR
+                    (n.organization_id IS NULL AND (n.deleted_for_orgs IS NULL OR NOT $org_id IN n.deleted_for_orgs))
+                )""")
+                params["org_id"] = org_id
+        elif document_type in ["risks", "assets"] and current_user:
             org_id = current_user.get("org_id")
             if org_id:
                 filter_conditions.append("n.organization_id = $org_id")
                 params["org_id"] = org_id
 
-        # Filter out deleted items for vulnerability and risks
-        if document_type in ["vulnerability", "risks"]:
+        # Filter out deleted items for vulnerability, threat and risks
+        # For org-specific items: check is_deleted flag
+        # For global items: already handled above via deleted_for_orgs
+        if document_type in ["vulnerability", "threat"]:
+            org_id = current_user.get("org_id") if current_user else None
+            if org_id:
+                filter_conditions.append("""(
+                    (n.organization_id IS NOT NULL AND (n.is_deleted IS NULL OR n.is_deleted = 'false'))
+                    OR
+                    n.organization_id IS NULL
+                )""")
+            else:
+                filter_conditions.append("(n.is_deleted IS NULL OR n.is_deleted = 'false')")
+        elif document_type == "risks":
             filter_conditions.append("(n.is_deleted IS NULL OR n.is_deleted = 'false')")
 
         # If filter_for_doctype is specified, auto-detect the field that links to document_type

@@ -49,7 +49,10 @@ async def get_schema(
     request: Request = None,
     current_user: dict = Depends(get_current_user)
 ):
-    file_path = os.path.join(SCHEMA_DIR, f"{schema_name}.json")
+    # Treat "complaince" as alias for "control"
+    actual_schema_name = "control" if schema_name == "complaince" else schema_name
+
+    file_path = os.path.join(SCHEMA_DIR, f"{actual_schema_name}.json")
 
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Schema not found")
@@ -66,7 +69,7 @@ async def get_schema(
 
     # If doc_id is provided, get the actual document data
     if doc_id:
-        if schema_name == "users":
+        if actual_schema_name == "users":
             # ✅ Extract token from request headers
             auth_header = request.headers.get("authorization")
             if not auth_header:
@@ -80,7 +83,7 @@ async def get_schema(
             relationships = user_response["relationships"]
             document = {"node": user_data,"relationships":relationships}
         else:
-            crud = GenericCRUD(db, schema_name)
+            crud = GenericCRUD(db, actual_schema_name)
             document = await crud.get_by_id(doc_id)
 
         if not document:
@@ -90,8 +93,8 @@ async def get_schema(
         relationships = document.get("relationships", [])
         doc_data = dict(doc_node)
 
-        # Special handling for control schema
-        if schema_name == "control":
+        # Special handling for control schema (also applies to complaince)
+        if actual_schema_name == "control":
             control_id = doc_data.get("control_id", "")
             questions = []
 
@@ -175,7 +178,7 @@ async def get_schema(
 
                 
         # Special handling for control_question schema
-        if schema_name == "control_question":
+        if actual_schema_name == "control_question":
             questions_text = doc_data.get("questions_text", [])
             weights = doc_data.get("weights", [])
 
@@ -192,7 +195,7 @@ async def get_schema(
         fieldname = field.get("fieldname")
         if fieldname == "control_assessment":
             field["default_value"] = sanitize_for_json(questions)
-        elif fieldname == "control_id" and schema_name == "control_question":
+        elif fieldname == "control_id" and actual_schema_name == "control_question":
             field["default_value"] = doc_data.get("control", "")
         else:
             field["default_value"] = sanitize_for_json(doc_data.get(fieldname))
