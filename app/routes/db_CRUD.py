@@ -255,6 +255,107 @@ async def update_complaince_item(
     return updated
 
 
+@router.get("/dashboard/compliance")
+async def get_compliance_dashboard_graph(
+    framework: Optional[str] = Query(None),
+    framework_id: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get compliance graph data for dashboard.
+    Returns framework options and compliance split for selected framework.
+    If no framework is selected, the first framework in the list is used.
+    """
+    org_id = current_user.get("org_id")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="Organization ID not found in user token")
+
+    try:
+        frameworks_query = """
+        MATCH (f:framework)
+        RETURN DISTINCT f.id AS id, f.framework_name AS framework_name
+        ORDER BY toLower(f.framework_name) ASC
+        """
+        frameworks_result = await db.run(frameworks_query)
+        frameworks_records = await frameworks_result.data()
+
+        frameworks = [
+            {
+                "id": record.get("id"),
+                "label": record.get("framework_name"),
+                "value": record.get("id")
+            }
+            for record in frameworks_records
+            if record.get("id") and record.get("framework_name")
+        ]
+
+        if not frameworks:
+            return {
+                "frameworks": [],
+                "selected_framework": None,
+                "data": [
+                    {"name": "Compliant", "value": 0},
+                    {"name": "Non-Compliant", "value": 0},
+                    {"name": "Partially Compliant", "value": 0}
+                ]
+            }
+
+        requested_framework = framework or framework_id
+        framework_ids = {item["id"] for item in frameworks}
+        selected_framework_id = requested_framework if requested_framework in framework_ids else frameworks[0]["id"]
+        selected_framework = next(
+            (item for item in frameworks if item["id"] == selected_framework_id),
+            frameworks[0]
+        )
+
+        counts_query = """
+        MATCH (c:control)
+        WHERE
+            EXISTS {
+                MATCH (f:framework {id: $framework_id})-[:owns]->(c)
+            }
+            OR toLower(trim(toString(c.framework))) = toLower(trim($framework_id))
+            OR toLower(trim(toString(c.framework))) = toLower(trim($framework_name))
+        OPTIONAL MATCH (ca:control_assessment {control_id: c.control_id, organization_id: $org_id})
+        WITH CASE
+            WHEN ca.control_compliance = 'Compliant' THEN 'Compliant'
+            WHEN ca.control_compliance IN ['Partially Compliant', 'Partially-Compliant'] THEN 'Partially Compliant'
+            ELSE 'Non-Compliant'
+        END AS compliance_status
+        RETURN compliance_status, count(*) AS value
+        """
+        counts_result = await db.run(
+            counts_query,
+            framework_id=selected_framework_id,
+            framework_name=selected_framework["label"],
+            org_id=org_id
+        )
+        counts_records = await counts_result.data()
+
+        counts_map = {
+            "Compliant": 0,
+            "Non-Compliant": 0,
+            "Partially Compliant": 0
+        }
+        for row in counts_records:
+            status = row.get("compliance_status")
+            if status in counts_map:
+                counts_map[status] = row.get("value", 0)
+
+        return sanitize_for_json({
+            "frameworks": frameworks,
+            "selected_framework": selected_framework,
+            "data": [
+                {"name": "Compliant", "value": counts_map["Compliant"]},
+                {"name": "Non-Compliant", "value": counts_map["Non-Compliant"]},
+                {"name": "Partially Compliant", "value": counts_map["Partially Compliant"]}
+            ]
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============== GENERIC CRUD ROUTES ==============
 
 @router.post("/data/{doctype}")
