@@ -85,13 +85,14 @@ async def get_complaince_data(
                 params[param_key] = str(value)
                 filter_idx += 1
 
-        where_str = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+        filter_str = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
 
         # Count query
         count_query = f"""
         MATCH (c:control)
         OPTIONAL MATCH (ca:control_assessment {{control_id: c.control_id, organization_id: $org_id}})
-        {where_str}
+        WITH c, ca
+        {filter_str}
         RETURN count(c) AS total
         """
         count_result = await db.run(count_query, **params)
@@ -103,7 +104,8 @@ async def get_complaince_data(
         MATCH (c:control)
         OPTIONAL MATCH (ca:control_assessment {{control_id: c.control_id, organization_id: $org_id}})
         OPTIONAL MATCH (f:framework)-[:owns]->(c)
-        {where_str}
+        WITH c, ca, f
+        {filter_str}
         RETURN c, ca, f.framework_name AS framework_name
         ORDER BY
             toInteger(split(toString(c.control_id), '.')[0]) ASC,

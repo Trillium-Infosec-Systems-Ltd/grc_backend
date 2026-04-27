@@ -12,6 +12,22 @@ from services.database import get_db
 import json
 from fastapi.responses import JSONResponse
 
+# Hardcoded paired control IDs: when one becomes Compliant/Non-Compliant,
+# the paired control should mirror the same status. Add more pairs as needed.
+PAIRED_CONTROL_IDS = [
+    ("A.5.2", "EGC-C-05"),
+    # ("X.Y.Z", "EGC-C-XX"),  # add more pairs here
+]
+
+def _get_paired_control_id(control_id_value: str) -> str | None:
+    """Return the paired control_id for a given control_id, or None if no pair exists."""
+    for a, b in PAIRED_CONTROL_IDS:
+        if control_id_value == a:
+            return b
+        if control_id_value == b:
+            return a
+    return None
+
 
 class GenericCRUD:
     def __init__(self, session: AsyncSession, doctype: str, current_user: dict = None   ):
@@ -925,6 +941,14 @@ class GenericCRUD:
             if data.get("compliance_status") == "Non Compliant":
                 await self._handle_non_compliant_control_trigger(item_id, assessment_data["organization_id"])
 
+            # Sync hardcoded paired control compliance
+            await self._sync_paired_control_compliance(
+                control_id_value=data["control_id"],
+                compliance_status=data.get("compliance_status", "Non Compliant"),
+                organization_id=assessment_data["organization_id"],
+                assessment_data_source=assessment_data,
+            )
+
         if self.doctype == "control" and data.get("control_assessment") is None:
            # Serialize
             data["updated_at"] = now  # Already set, but reinforces clarity
@@ -983,6 +1007,14 @@ class GenericCRUD:
 
             # Trigger: When control_assessment is None, default is Non Compliant, so restore vulnerabilities
             await self._handle_non_compliant_control_trigger(item_id, assessment_data["organization_id"])
+
+            # Sync hardcoded paired control compliance
+            await self._sync_paired_control_compliance(
+                control_id_value=data["control_id"],
+                compliance_status="Non Compliant",
+                organization_id=assessment_data["organization_id"],
+                assessment_data_source=assessment_data,
+            )
 
         # ✅ Special handling for vulnerability soft-delete via update
         if self.doctype == "vulnerability" and data.get("is_deleted") == "true":
@@ -1213,6 +1245,76 @@ class GenericCRUD:
                 await self._check_vulnerability_controls_compliance(item_id, org_id)
 
         return {"n": node, "id": item_id}
+
+    async def _sync_paired_control_compliance(self, control_id_value: str, compliance_status: str, organization_id: str, assessment_data_source: dict):
+        """
+        If control_id_value has a hardcoded pair, mirror the compliance_status
+        to the paired control's assessment and fire the same triggers.
+        """
+        paired_control_id = _get_paired_control_id(control_id_value)
+        if not paired_control_id:
+            return
+
+        print(f"[PAIR SYNC] Syncing paired control {paired_control_id} to {compliance_status} (triggered by {control_id_value})")
+
+        # Find the paired control node by its control_id property
+        find_query = """
+        MATCH (c:control {control_id: $paired_control_id})
+        RETURN c.id AS node_id, c.control_id AS control_id_value
+        """
+        result = await self.session.run(find_query, paired_control_id=paired_control_id)
+        record = await result.single()
+        if not record:
+            print(f"[PAIR SYNC] Paired control {paired_control_id} not found in DB, skipping")
+            return
+
+        paired_node_id = record["node_id"]
+        now = datetime.utcnow().isoformat()
+
+        paired_assessment = {
+            "control_id": paired_control_id,
+            "organization_id": organization_id,
+            "control_compliance": compliance_status,
+            "control_rating": assessment_data_source.get("control_rating", assessment_data_source.get("rating", "Low")),
+            "control_assessment": assessment_data_source.get("control_assessment"),
+            "remarks": assessment_data_source.get("remarks", ""),
+            "observation": assessment_data_source.get("observation", ""),
+            "reference_evidence": assessment_data_source.get("reference_evidence", ""),
+            "next_review_date": assessment_data_source.get("next_review_date", ""),
+            "control_applicable": assessment_data_source.get("control_applicable", "Yes"),
+            "created_at": now,
+            "updated_at": now,
+        }
+
+        # Upsert paired control's assessment
+        check_query = """
+        MATCH (a:control_assessment {control_id: $control_id, organization_id: $organization_id})
+        RETURN a
+        """
+        res = await self.session.run(check_query, control_id=paired_control_id, organization_id=organization_id)
+        existing = await res.single()
+
+        if not existing:
+            create_query = """
+            CREATE (a:control_assessment $assessment_data)
+            RETURN a
+            """
+            await self.session.run(create_query, assessment_data=paired_assessment)
+        else:
+            update_query = """
+            MATCH (a:control_assessment {control_id: $control_id, organization_id: $organization_id})
+            SET a += $assessment_data
+            RETURN a
+            """
+            await self.session.run(update_query, control_id=paired_control_id, organization_id=organization_id, assessment_data=paired_assessment)
+
+        print(f"[PAIR SYNC] Updated assessment for paired control {paired_control_id}")
+
+        # Fire the same compliance triggers for the paired control
+        if compliance_status == "Compliant":
+            await self._handle_compliant_control_trigger(paired_node_id, organization_id)
+        elif compliance_status == "Non Compliant":
+            await self._handle_non_compliant_control_trigger(paired_node_id, organization_id)
 
     async def _handle_compliant_control_trigger(self, control_id: str, organization_id: str):
         """
