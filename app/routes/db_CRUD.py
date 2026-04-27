@@ -358,6 +358,110 @@ async def get_compliance_dashboard_graph(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/dashboard/risks-by-asset-category")
+@router.get("/dashboard/risk-by-asset-category")
+async def get_risks_by_asset_category_graph(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get dashboard graph data for risks grouped by asset category.
+    Returns each category with Low/Medium/High/Very High counts.
+    """
+    org_id = current_user.get("org_id")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="Organization ID not found in user token")
+
+    try:
+        query = """
+        MATCH (r:risks)
+        WHERE r.organization_id = $org_id
+          AND (r.is_deleted IS NULL OR toLower(toString(r.is_deleted)) <> 'true')
+        WITH
+            CASE
+                WHEN toLower(trim(toString(r.residual_risk))) = 'low' THEN 'Low'
+                WHEN toLower(trim(toString(r.residual_risk))) = 'medium' THEN 'Medium'
+                WHEN toLower(trim(toString(r.residual_risk))) = 'high' THEN 'High'
+                WHEN toLower(trim(toString(r.residual_risk))) IN ['very high', 'very_high', 'veryhigh'] THEN 'Very High'
+                ELSE NULL
+            END AS risk_level,
+            coalesce(nullif(trim(toString(r.type)), ''), 'Uncategorized') AS raw_category
+        OPTIONAL MATCH (at:asset_type {id: raw_category})
+        WITH coalesce(at.type_name, raw_category) AS category_name, risk_level
+        RETURN
+            category_name AS name,
+            sum(CASE WHEN risk_level = 'Low' THEN 1 ELSE 0 END) AS Low,
+            sum(CASE WHEN risk_level = 'Medium' THEN 1 ELSE 0 END) AS Medium,
+            sum(CASE WHEN risk_level = 'High' THEN 1 ELSE 0 END) AS High,
+            sum(CASE WHEN risk_level = 'Very High' THEN 1 ELSE 0 END) AS `Very High`
+        ORDER BY toLower(category_name) ASC
+        """
+
+        result = await db.run(query, org_id=org_id)
+        rows = await result.data()
+
+        return sanitize_for_json({
+            "RISK_BY_ASSET_CATEGORY": rows
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dashboard/risks-by-status")
+@router.get("/dashboard/risk-by-status")
+async def get_risk_by_status_graph(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get dashboard graph data for risks grouped by residual risk status.
+    """
+    org_id = current_user.get("org_id")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="Organization ID not found in user token")
+
+    try:
+        query = """
+        MATCH (r:risks)
+        WHERE r.organization_id = $org_id
+          AND (r.is_deleted IS NULL OR toLower(toString(r.is_deleted)) <> 'true')
+        WITH CASE
+            WHEN toLower(trim(toString(r.residual_risk))) = 'low' THEN 'Low'
+            WHEN toLower(trim(toString(r.residual_risk))) = 'medium' THEN 'Medium'
+            WHEN toLower(trim(toString(r.residual_risk))) = 'high' THEN 'High'
+            WHEN toLower(trim(toString(r.residual_risk))) IN ['very high', 'very_high', 'veryhigh'] THEN 'Very High'
+            ELSE NULL
+        END AS risk_level
+        RETURN risk_level, count(*) AS value
+        """
+
+        result = await db.run(query, org_id=org_id)
+        rows = await result.data()
+
+        counts_map = {
+            "Low": 0,
+            "Medium": 0,
+            "High": 0,
+            "Very High": 0
+        }
+
+        for row in rows:
+            status = row.get("risk_level")
+            if status in counts_map:
+                counts_map[status] = row.get("value", 0)
+
+        return sanitize_for_json({
+            "RISK_BY_STATUS": [
+                {"name": "Low", "value": counts_map["Low"]},
+                {"name": "Medium", "value": counts_map["Medium"]},
+                {"name": "High", "value": counts_map["High"]},
+                {"name": "Very High", "value": counts_map["Very High"]}
+            ]
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============== GENERIC CRUD ROUTES ==============
 
 @router.post("/data/{doctype}")
