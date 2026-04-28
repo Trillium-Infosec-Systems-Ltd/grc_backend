@@ -23,6 +23,7 @@ import os
 import uuid
 from typing import List
 import pandas as pd
+import re
 
 
 
@@ -753,6 +754,37 @@ async def bulk_upload_nodes(
                                 data["controls"] = alias_val
                                 break
 
+                    if doctype == "threat" and not data.get("vulnerabilities"):
+                        vulnerability_aliases = [
+                            "Vulnerabilities",
+                            "Vulnerability",
+                            "Vulnerability Name(s)",
+                            "Vulnerability Names",
+                            "vulnerabilities",
+                            "vulnerability"
+                        ]
+                        for alias in vulnerability_aliases:
+                            alias_val = row.get(alias)
+                            if alias_val:
+                                data["vulnerabilities"] = alias_val
+                                break
+
+                    if doctype == "vulnerability" and not data.get("relevant_control_ids"):
+                        vuln_control_aliases = [
+                            "Control IDs",
+                            "Control ID(s)",
+                            "Control ID",
+                            "Controls",
+                            "control ids",
+                            "control_ids",
+                            "control_id"
+                        ]
+                        for alias in vuln_control_aliases:
+                            alias_val = row.get(alias)
+                            if alias_val:
+                                data["relevant_control_ids"] = alias_val
+                                break
+
                     for field in required_fields:
                         if not data.get(field):
                             raise ValueError(f"Missing required field: {field}")
@@ -805,7 +837,11 @@ async def bulk_upload_nodes(
                         if field.get("fieldtype") == "MultiLink":
                             fname = field["fieldname"]
                             if fname in data and data[fname]:
-                                data[fname] = [v.strip() for v in str(data[fname]).split(",") if v.strip()]
+                                data[fname] = [
+                                    v.strip()
+                                    for v in re.split(r"[,;\n\r]+", str(data[fname]))
+                                    if v and v.strip()
+                                ]
 
                     for field in schema["fields"]:
                         if field.get("fieldtype") not in ["Link", "MultiLink"]:
@@ -815,28 +851,52 @@ async def bulk_upload_nodes(
                             continue
                         target_doctype = field["link_to"]
                         target_field = field.get("target_field", "id")
-                        raw_values = data[fname] if isinstance(data[fname], list) else [v.strip() for v in str(data[fname]).split(",") if v.strip()]
+                        raw_values = data[fname] if isinstance(data[fname], list) else [
+                            v.strip() for v in re.split(r"[,;\n\r]+", str(data[fname])) if v and v.strip()
+                        ]
 
                         resolved_ids = []
                         for val in raw_values:
                             val_str = str(val).strip()
 
-                            match_query = f"""
-                            MATCH (n:{target_doctype} {{{target_field}: $val}})
-                            RETURN n.id AS id
-                            """
-                            # Try as string first (to preserve values like "5.10")
-                            result = await db.run(match_query, val=val_str)
-                            record = await result.single()
-                            
-                            # If not found and looks numeric, try as float (for backward compatibility)
-                            if not record:
-                                try:
-                                    float_val = float(val_str)
-                                    result = await db.run(match_query, val=float_val)
-                                    record = await result.single()
-                                except (ValueError, TypeError):
-                                    pass
+                            if target_doctype == "control" and target_field == "control_id":
+                                control_match_query = """
+                                MATCH (n:control)
+                                WHERE toString(n.control_id) = $val
+                                RETURN n.id AS id
+                                """
+                                result = await db.run(control_match_query, val=val_str)
+                                record = await result.single()
+
+                                if not record:
+                                    try:
+                                        float_val = float(val_str)
+                                        control_float_match_query = """
+                                        MATCH (n:control)
+                                        WHERE toFloat(toString(n.control_id)) = $float_val
+                                        RETURN n.id AS id
+                                        """
+                                        result = await db.run(control_float_match_query, float_val=float_val)
+                                        record = await result.single()
+                                    except (ValueError, TypeError):
+                                        pass
+                            else:
+                                match_query = f"""
+                                MATCH (n:{target_doctype} {{{target_field}: $val}})
+                                RETURN n.id AS id
+                                """
+                                # Try as string first
+                                result = await db.run(match_query, val=val_str)
+                                record = await result.single()
+
+                                # If not found and looks numeric, try as float (for backward compatibility)
+                                if not record:
+                                    try:
+                                        float_val = float(val_str)
+                                        result = await db.run(match_query, val=float_val)
+                                        record = await result.single()
+                                    except (ValueError, TypeError):
+                                        pass
                             
                             if not record:
                                 raise ValueError(f"{target_doctype} not found where {target_field} = '{val}'")
