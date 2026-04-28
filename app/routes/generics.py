@@ -734,6 +734,18 @@ async def bulk_upload_nodes(
                     errors.append({"control": control, "error": str(e)})
 
         else:
+            def get_row_value_by_aliases(row_data, aliases):
+                normalized = {
+                    str(k).strip().lower(): v
+                    for k, v in row_data.items()
+                    if k is not None
+                }
+                for alias in aliases:
+                    val = normalized.get(alias.strip().lower())
+                    if val:
+                        return val
+                return None
+
             for index, row in df.iterrows():
                 try:
                     data = {field_map.get(k, k): v for k, v in row.items() if k in field_map}
@@ -748,11 +760,9 @@ async def bulk_upload_nodes(
                             "control_ids",
                             "control_id"
                         ]
-                        for alias in control_aliases:
-                            alias_val = row.get(alias)
-                            if alias_val:
-                                data["controls"] = alias_val
-                                break
+                        alias_val = get_row_value_by_aliases(row, control_aliases)
+                        if alias_val:
+                            data["controls"] = alias_val
 
                     if doctype == "threat" and not data.get("vulnerabilities"):
                         vulnerability_aliases = [
@@ -763,11 +773,9 @@ async def bulk_upload_nodes(
                             "vulnerabilities",
                             "vulnerability"
                         ]
-                        for alias in vulnerability_aliases:
-                            alias_val = row.get(alias)
-                            if alias_val:
-                                data["vulnerabilities"] = alias_val
-                                break
+                        alias_val = get_row_value_by_aliases(row, vulnerability_aliases)
+                        if alias_val:
+                            data["vulnerabilities"] = alias_val
 
                     if doctype == "vulnerability" and not data.get("relevant_control_ids"):
                         vuln_control_aliases = [
@@ -779,11 +787,9 @@ async def bulk_upload_nodes(
                             "control_ids",
                             "control_id"
                         ]
-                        for alias in vuln_control_aliases:
-                            alias_val = row.get(alias)
-                            if alias_val:
-                                data["relevant_control_ids"] = alias_val
-                                break
+                        alias_val = get_row_value_by_aliases(row, vuln_control_aliases)
+                        if alias_val:
+                            data["relevant_control_ids"] = alias_val
 
                     for field in required_fields:
                         if not data.get(field):
@@ -862,7 +868,7 @@ async def bulk_upload_nodes(
                             if target_doctype == "control" and target_field == "control_id":
                                 control_match_query = """
                                 MATCH (n:control)
-                                WHERE toString(n.control_id) = $val
+                                WHERE toString(n.control_id) = $val OR n.id = $val
                                 RETURN n.id AS id
                                 """
                                 result = await db.run(control_match_query, val=val_str)
@@ -888,6 +894,15 @@ async def bulk_upload_nodes(
                                 # Try as string first
                                 result = await db.run(match_query, val=val_str)
                                 record = await result.single()
+
+                                # Fallback: allow node id values in Excel even when target_field is not id
+                                if not record and target_field != "id":
+                                    id_match_query = f"""
+                                    MATCH (n:{target_doctype} {{id: $val}})
+                                    RETURN n.id AS id
+                                    """
+                                    result = await db.run(id_match_query, val=val_str)
+                                    record = await result.single()
 
                                 # If not found and looks numeric, try as float (for backward compatibility)
                                 if not record:
