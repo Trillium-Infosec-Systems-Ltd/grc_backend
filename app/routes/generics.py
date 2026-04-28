@@ -737,6 +737,22 @@ async def bulk_upload_nodes(
                 try:
                     data = {field_map.get(k, k): v for k, v in row.items() if k in field_map}
 
+                    if doctype == "threat" and not data.get("controls"):
+                        control_aliases = [
+                            "Controls",
+                            "Control",
+                            "Control ID(s)",
+                            "Control IDs",
+                            "Control ID",
+                            "control_ids",
+                            "control_id"
+                        ]
+                        for alias in control_aliases:
+                            alias_val = row.get(alias)
+                            if alias_val:
+                                data["controls"] = alias_val
+                                break
+
                     for field in required_fields:
                         if not data.get(field):
                             raise ValueError(f"Missing required field: {field}")

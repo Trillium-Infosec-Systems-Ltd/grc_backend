@@ -54,6 +54,19 @@
         "span": 12,
        "is_filter":true
       },
+      {
+        "fieldname": "controls",
+        "fieldtype": "MultiLink",
+        "label": "Controls",
+        "link_to": "control",
+        "target_field": "control_id",
+        "relationship_direction": "incoming",
+        "relationship_type": "MITIGATES",
+        "display_on_frontend": true,
+        "required": false,
+        "span": 12,
+        "is_filter": true
+      },
 
       {
         "fieldname": "created_at",
