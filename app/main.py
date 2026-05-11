@@ -27,6 +27,7 @@ app.include_router(relationships.router, prefix="/api")
 
 app.include_router(auth_routes.router,prefix="/api/auth",tags=["auth"])
 app.mount("/static", StaticFiles(directory="static"), name="uploads")
+app.mount("/api/static", StaticFiles(directory="static"), name="api-static-uploads")
 # for route in app.routes:
 #     print(route.path)
 

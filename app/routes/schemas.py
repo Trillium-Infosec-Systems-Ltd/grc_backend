@@ -7,7 +7,68 @@ from routes.auth_routes import get_user_by_id
 from fastapi import Request# adjust path as needed
 from services.dependencies import get_current_user
 import math
+import ast
 from neo4j.graph import Node, Relationship
+
+
+def _to_public_static_path(path: str) -> str:
+    normalized = str(path or "").replace("\\", "/").strip()
+    if not normalized:
+        return ""
+    if normalized.startswith("/api/"):
+        normalized = normalized[4:]
+    elif normalized.startswith("api/"):
+        normalized = normalized[3:]
+    if normalized.startswith("apistatic/"):
+        normalized = normalized[3:]
+    elif normalized.startswith("/apistatic/"):
+        normalized = normalized[4:]
+    normalized = normalized.lstrip("/")
+    if normalized.startswith("static/"):
+        return f"/{normalized}"
+    return f"/{normalized}"
+
+
+def _normalize_attached_files(value):
+    def _extract_url(item):
+        if item is None:
+            return ""
+        if isinstance(item, dict):
+            return str(item.get("url") or item.get("path") or "").strip()
+
+        text = str(item).strip()
+        if not text:
+            return ""
+
+        if text.startswith("{") and text.endswith("}"):
+            try:
+                parsed = ast.literal_eval(text)
+                if isinstance(parsed, dict):
+                    return str(parsed.get("url") or parsed.get("path") or "").strip()
+            except Exception:
+                pass
+        return text
+
+    if value is None:
+        return []
+
+    if isinstance(value, str):
+        value = [value]
+
+    if not isinstance(value, list):
+        value = [value]
+
+    normalized = []
+    for item in value:
+        url = _to_public_static_path(_extract_url(item))
+        if url:
+            normalized.append(url)
+    return normalized
+
+
+def _attached_file_objects(value):
+    urls = _normalize_attached_files(value)
+    return [{"name": os.path.basename(url), "url": url} for url in urls]
 
 def sanitize_for_json(obj):
     if isinstance(obj, dict):
@@ -122,6 +183,7 @@ async def get_schema(
                     doc_data["remarks"] = assessment.get("remarks", "")
                     doc_data["observation"] = assessment.get("observation", "")
                     doc_data["reference_evidence"] = assessment.get("reference_evidence", "")
+                    doc_data["attached_files"] = _attached_file_objects(assessment.get("attached_files", []))
                     doc_data["next_review_date"] = assessment.get("next_review_date", "")
                     doc_data["control_applicable"] = assessment.get("control_applicable", "Yes")
                     # Parse questions if present
@@ -162,6 +224,7 @@ async def get_schema(
                 doc_data["remarks"] = ""
                 doc_data["observation"] = ""
                 doc_data["reference_evidence"] = ""
+                doc_data["attached_files"] = []
                 doc_data["next_review_date"] = ""
                 doc_data["control_applicable"] = "Yes"
 
@@ -195,6 +258,8 @@ async def get_schema(
         fieldname = field.get("fieldname")
         if fieldname == "control_assessment":
             field["default_value"] = sanitize_for_json(questions)
+        elif fieldname == "attached_files":
+            field["default_value"] = sanitize_for_json(_attached_file_objects(doc_data.get(fieldname, [])))
         elif fieldname == "control_id" and actual_schema_name == "control_question":
             field["default_value"] = doc_data.get("control", "")
         else:

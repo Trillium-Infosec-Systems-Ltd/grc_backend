@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Path, UploadFile,File,Request,Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from neo4j import AsyncSession
 from services.dependencies import get_current_user
 from services.db_CRUD import GenericCRUD
@@ -9,13 +9,16 @@ from services.schema_loader import load_schema
 from services.database import get_db
 from fastapi import Query
 from neo4j import AsyncDriver
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, Set, Tuple
 import json
 import os 
+import ast
 from datetime import datetime
 import csv
 import io
 import os
+import pandas as pd
+import re
 
 
 
@@ -34,6 +37,272 @@ def sanitize_for_json(obj):
     elif isinstance(obj, list):
         return [sanitize_for_json(i) for i in obj]
     return obj
+
+
+def _serialize_export_value(value):
+    if isinstance(value, list):
+        return ", ".join(str(v) for v in value)
+    if isinstance(value, dict):
+        return json.dumps(value)
+    return "" if value is None else value
+
+
+def _rows_to_excel_response(rows: list, filename: str):
+    output = io.BytesIO()
+    df = pd.DataFrame(rows)
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="data")
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}.xlsx"}
+    )
+
+
+def _rows_to_pdf_response(rows: list, filename: str):
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="PDF export requires reportlab. Install it with: pip install reportlab"
+        )
+
+    output = io.BytesIO()
+    pdf = canvas.Canvas(output, pagesize=A4)
+    page_width, page_height = A4
+    y = page_height - 40
+
+    pdf.setFont("Helvetica-Bold", 12)
+    pdf.drawString(30, y, filename)
+    y -= 24
+    pdf.setFont("Helvetica", 9)
+
+    for idx, row in enumerate(rows, start=1):
+        row_text = f"{idx}. " + " | ".join(
+            f"{k}: {_serialize_export_value(v)}" for k, v in row.items()
+        )
+        line_chunks = [row_text[i:i + 150] for i in range(0, len(row_text), 150)]
+        for chunk in line_chunks:
+            if y < 40:
+                pdf.showPage()
+                y = page_height - 40
+                pdf.setFont("Helvetica", 9)
+            pdf.drawString(30, y, chunk)
+            y -= 14
+        y -= 6
+
+    pdf.save()
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}.pdf"}
+    )
+
+
+def _build_export_response(rows: list, filename: str, export_format: str):
+    if export_format == "excel":
+        return _rows_to_excel_response(rows, filename)
+    if export_format == "pdf":
+        return _rows_to_pdf_response(rows, filename)
+    raise HTTPException(status_code=400, detail="format must be either 'excel' or 'pdf'")
+
+
+def _normalize_file_list(value: Any) -> List[str]:
+    def _extract_url(item: Any) -> str:
+        if item is None:
+            return ""
+        if isinstance(item, dict):
+            return str(item.get("url") or item.get("path") or "").strip()
+
+        text = str(item).strip()
+        if not text:
+            return ""
+
+        # Recover legacy values accidentally stored as stringified dicts.
+        if text.startswith("{") and text.endswith("}"):
+            try:
+                parsed = ast.literal_eval(text)
+                if isinstance(parsed, dict):
+                    return str(parsed.get("url") or parsed.get("path") or "").strip()
+            except Exception:
+                pass
+        return text
+
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [u for u in (_extract_url(v) for v in value) if u]
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        if text.startswith("["):
+            try:
+                parsed = json.loads(text)
+                if isinstance(parsed, list):
+                    return [u for u in (_extract_url(v) for v in parsed) if u]
+            except Exception:
+                pass
+        return [part.strip() for part in text.split(",") if part.strip()]
+    single = _extract_url(value)
+    return [single] if single else []
+
+
+def _to_public_static_path(path: str) -> str:
+    normalized = str(path or "").replace("\\", "/").strip()
+    if not normalized:
+        return ""
+    # Remove accidental API prefix from older values.
+    if normalized.startswith("/api/"):
+        normalized = normalized[4:]
+    elif normalized.startswith("api/"):
+        normalized = normalized[3:]
+    # Handle malformed values like "apistatic/...".
+    if normalized.startswith("apistatic/"):
+        normalized = normalized[3:]
+    elif normalized.startswith("/apistatic/"):
+        normalized = normalized[4:]
+    if normalized.startswith("./"):
+        normalized = normalized[2:]
+    normalized = normalized.lstrip("/")
+    if normalized.startswith("static/"):
+        return f"/{normalized}"
+    return f"/{normalized}"
+
+
+def _normalize_evidence_paths(value: Any) -> List[str]:
+    return [
+        _to_public_static_path(v)
+        for v in _normalize_file_list(value)
+        if _to_public_static_path(v)
+    ]
+
+
+def _evidence_file_objects(value: Any) -> List[Dict[str, str]]:
+    urls = _normalize_evidence_paths(value)
+    return [{"name": os.path.basename(url), "url": url} for url in urls]
+
+
+def _safe_slug(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", str(value or "").strip()) or "unknown"
+
+
+def _safe_filename(filename: str) -> str:
+    # Keep the user's filename while preventing path traversal and illegal separators.
+    name = os.path.basename(str(filename or "").strip())
+    name = name.replace("\\", "_").replace("/", "_")
+    return name or "uploaded_file"
+
+
+def _is_safe_neo4j_identifier(value: str) -> bool:
+    return bool(re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", value or ""))
+
+
+async def _fetch_display_map(
+    db: AsyncSession,
+    label: str,
+    target_field: str,
+    ids: Set[str]
+) -> Dict[str, Any]:
+    if not ids or not _is_safe_neo4j_identifier(label) or not _is_safe_neo4j_identifier(target_field):
+        return {}
+
+    query = f"""
+    MATCH (n:{label})
+    WHERE n.id IN $ids
+    RETURN n.id AS id,
+           coalesce(n[$target_field], n.name, n.id) AS display
+    """
+    result = await db.run(query, ids=list(ids), target_field=target_field)
+    records = await result.data()
+
+    return {
+        str(record.get("id")): record.get("display")
+        for record in records
+        if record.get("id") is not None
+    }
+
+
+async def _resolve_export_link_values(
+    db: AsyncSession,
+    doctype: str,
+    rows: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    if not rows:
+        return rows
+
+    try:
+        schema = load_schema(doctype)
+    except Exception:
+        return rows
+
+    link_field_config: Dict[str, Tuple[str, str, bool]] = {}
+    for field in schema.get("fields", []):
+        fieldtype = field.get("fieldtype")
+        if fieldtype not in {"Link", "MultiLink"}:
+            continue
+
+        fieldname = field.get("fieldname")
+        link_to = field.get("link_to")
+        target_field = field.get("target_field") or "name"
+        is_multi = fieldtype == "MultiLink"
+
+        if fieldname and link_to:
+            link_field_config[fieldname] = (link_to, target_field, is_multi)
+
+    if not link_field_config:
+        return rows
+
+    ids_by_target: Dict[Tuple[str, str], Set[str]] = {}
+    for row in rows:
+        for fieldname, (link_to, target_field, is_multi) in link_field_config.items():
+            raw_value = row.get(fieldname)
+            if raw_value in (None, ""):
+                continue
+
+            values: List[Any]
+            if isinstance(raw_value, list):
+                values = raw_value
+            elif is_multi and isinstance(raw_value, str) and "," in raw_value:
+                values = [item.strip() for item in raw_value.split(",") if item.strip()]
+            else:
+                values = [raw_value]
+
+            bucket = ids_by_target.setdefault((link_to, target_field), set())
+            for value in values:
+                if value in (None, ""):
+                    continue
+                bucket.add(str(value))
+
+    display_maps: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for key, ids in ids_by_target.items():
+        link_to, target_field = key
+        display_maps[key] = await _fetch_display_map(db, link_to, target_field, ids)
+
+    transformed_rows: List[Dict[str, Any]] = []
+    for row in rows:
+        transformed = dict(row)
+        for fieldname, (link_to, target_field, is_multi) in link_field_config.items():
+            raw_value = transformed.get(fieldname)
+            if raw_value in (None, ""):
+                continue
+
+            display_map = display_maps.get((link_to, target_field), {})
+            if isinstance(raw_value, list):
+                transformed[fieldname] = [display_map.get(str(v), v) for v in raw_value]
+            elif is_multi and isinstance(raw_value, str) and "," in raw_value:
+                items = [item.strip() for item in raw_value.split(",") if item.strip()]
+                transformed[fieldname] = [display_map.get(str(v), v) for v in items]
+            else:
+                transformed[fieldname] = display_map.get(str(raw_value), raw_value)
+
+        transformed_rows.append(transformed)
+
+    return transformed_rows
 
 
 # ============== COMPLAINCE ROUTES (must be before generic /data/{doctype} routes) ==============
@@ -143,6 +412,7 @@ async def get_complaince_data(
                 "remarks": assessment.get("remarks", ""),
                 "observation": assessment.get("observation", ""),
                 "reference_evidence": assessment.get("reference_evidence", ""),
+                "attached_files": _normalize_evidence_paths(assessment.get("attached_files", [])),
                 "next_review_date": assessment.get("next_review_date", ""),
                 "updated_at": assessment.get("updated_at") or control.get("updated_at"),
                 "created_at": control.get("created_at")
@@ -212,6 +482,7 @@ async def get_complaince_item(
             "remarks": assessment.get("remarks", ""),
             "observation": assessment.get("observation", ""),
             "reference_evidence": assessment.get("reference_evidence", ""),
+            "attached_files": _normalize_evidence_paths(assessment.get("attached_files", [])),
             "next_review_date": assessment.get("next_review_date", ""),
             "updated_at": assessment.get("updated_at") or control.get("updated_at"),
             "created_at": control.get("created_at")
@@ -255,6 +526,245 @@ async def update_complaince_item(
         raise HTTPException(status_code=404, detail="Item not found or not updated")
 
     return updated
+
+
+@router.post("/data/complaince/{item_id}/upload-evidence")
+async def upload_complaince_evidence(
+    item_id: str,
+    files: List[UploadFile] = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    org_id = current_user.get("org_id")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="Organization ID not found in user token")
+
+    control_query = """
+    MATCH (c:control {id: $item_id})
+    RETURN c.control_id AS control_id
+    """
+    control_result = await db.run(control_query, item_id=item_id)
+    control_record = await control_result.single()
+    if not control_record:
+        raise HTTPException(status_code=404, detail="Control not found")
+
+    control_id_value = str(control_record["control_id"]).strip()
+
+    safe_org_id = _safe_slug(org_id)
+    safe_control_id = _safe_slug(control_id_value)
+    upload_dir = os.path.join("static", "uploads", "evidence", safe_org_id, safe_control_id)
+    os.makedirs(upload_dir, exist_ok=True)
+
+    allowed_extensions = {
+        ".pdf", ".png", ".jpg", ".jpeg", ".csv", ".xlsx", ".xls", ".doc", ".docx", ".txt"
+    }
+    max_bytes = 10 * 1024 * 1024
+
+    uploaded_paths: List[str] = []
+    for upload in files:
+        original_filename = _safe_filename(upload.filename)
+        _, ext = os.path.splitext(original_filename)
+        ext = ext.lower()
+        if ext not in allowed_extensions:
+            raise HTTPException(status_code=400, detail=f"Unsupported evidence file type: {ext or 'unknown'}")
+
+        content = await upload.read()
+        if len(content) > max_bytes:
+            raise HTTPException(status_code=400, detail=f"File '{upload.filename}' exceeds 10MB limit")
+
+        new_filename = original_filename
+        full_path = os.path.join(upload_dir, new_filename)
+
+        with open(full_path, "wb") as f:
+            f.write(content)
+
+        uploaded_paths.append(_to_public_static_path(full_path))
+
+    assessment_query = """
+    MATCH (a:control_assessment {control_id: $control_id, organization_id: $organization_id})
+    RETURN a
+    """
+    assessment_result = await db.run(
+        assessment_query,
+        control_id=control_id_value,
+        organization_id=org_id
+    )
+    assessment_record = await assessment_result.single()
+
+    now = datetime.utcnow().isoformat()
+    existing_files: List[str] = []
+    if assessment_record and assessment_record.get("a"):
+        existing_files = _normalize_evidence_paths(assessment_record["a"].get("attached_files", []))
+
+    merged_files = list(dict.fromkeys(existing_files + uploaded_paths))
+
+    if not assessment_record:
+        create_assessment_query = """
+        CREATE (a:control_assessment {
+            control_id: $control_id,
+            organization_id: $organization_id,
+            attached_files: $attached_files,
+            control_compliance: 'Non Compliant',
+            control_rating: 'Low',
+            control_applicable: 'Yes',
+            created_at: $now,
+            updated_at: $now
+        })
+        RETURN a
+        """
+        await db.run(
+            create_assessment_query,
+            control_id=control_id_value,
+            organization_id=org_id,
+            attached_files=merged_files,
+            now=now
+        )
+    else:
+        update_assessment_query = """
+        MATCH (a:control_assessment {control_id: $control_id, organization_id: $organization_id})
+        SET a.attached_files = $attached_files,
+            a.updated_at = $updated_at
+        RETURN a
+        """
+        await db.run(
+            update_assessment_query,
+            control_id=control_id_value,
+            organization_id=org_id,
+            attached_files=merged_files,
+            updated_at=now
+        )
+
+    return {
+        "organization_id": org_id,
+        "control_node_id": item_id,
+        "control_id": control_id_value,
+        "uploaded_paths": uploaded_paths,
+        "attached_files": _evidence_file_objects(merged_files)
+    }
+
+
+@router.get("/data/complaince/{item_id}/evidence")
+async def get_complaince_evidence(
+    item_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    org_id = current_user.get("org_id")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="Organization ID not found in user token")
+
+    control_query = """
+    MATCH (c:control {id: $item_id})
+    RETURN c.control_id AS control_id
+    """
+    control_result = await db.run(control_query, item_id=item_id)
+    control_record = await control_result.single()
+    if not control_record:
+        raise HTTPException(status_code=404, detail="Control not found")
+
+    control_id_value = str(control_record["control_id"]).strip()
+
+    assessment_query = """
+    MATCH (a:control_assessment {control_id: $control_id, organization_id: $organization_id})
+    RETURN a.attached_files AS attached_files
+    """
+    assessment_result = await db.run(
+        assessment_query,
+        control_id=control_id_value,
+        organization_id=org_id
+    )
+    assessment_record = await assessment_result.single()
+
+    attached_files = []
+    if assessment_record:
+        attached_files = _normalize_evidence_paths(assessment_record.get("attached_files", []))
+
+    return {
+        "organization_id": org_id,
+        "control_node_id": item_id,
+        "control_id": control_id_value,
+        "evidence_count": len(attached_files),
+        "attached_files": attached_files
+    }
+
+
+@router.delete("/data/complaince/{item_id}/evidence")
+async def delete_complaince_evidence(
+    item_id: str,
+    evidence_path: str = Query(..., description="Exact evidence file path from attached_files"),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    org_id = current_user.get("org_id")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="Organization ID not found in user token")
+
+    control_query = """
+    MATCH (c:control {id: $item_id})
+    RETURN c.control_id AS control_id
+    """
+    control_result = await db.run(control_query, item_id=item_id)
+    control_record = await control_result.single()
+    if not control_record:
+        raise HTTPException(status_code=404, detail="Control not found")
+
+    control_id_value = str(control_record["control_id"]).strip()
+
+    assessment_query = """
+    MATCH (a:control_assessment {control_id: $control_id, organization_id: $organization_id})
+    RETURN a
+    """
+    assessment_result = await db.run(
+        assessment_query,
+        control_id=control_id_value,
+        organization_id=org_id
+    )
+    assessment_record = await assessment_result.single()
+
+    if not assessment_record or not assessment_record.get("a"):
+        raise HTTPException(status_code=404, detail="No compliance assessment found for this control and organization")
+
+    existing_files = _normalize_evidence_paths(assessment_record["a"].get("attached_files", []))
+    requested_path = _to_public_static_path(evidence_path)
+    if requested_path not in existing_files:
+        raise HTTPException(status_code=404, detail="Evidence path not found for this control and organization")
+
+    updated_files = [p for p in existing_files if p != requested_path]
+    now = datetime.utcnow().isoformat()
+
+    update_assessment_query = """
+    MATCH (a:control_assessment {control_id: $control_id, organization_id: $organization_id})
+    SET a.attached_files = $attached_files,
+        a.updated_at = $updated_at
+    RETURN a
+    """
+    await db.run(
+        update_assessment_query,
+        control_id=control_id_value,
+        organization_id=org_id,
+        attached_files=updated_files,
+        updated_at=now
+    )
+
+    deleted_from_disk = False
+    safe_delete_root = os.path.abspath(os.path.join("static", "uploads", "evidence"))
+    candidate_rel_path = requested_path.lstrip("/")
+    candidate_abs_path = os.path.abspath(candidate_rel_path)
+
+    # Only allow deleting evidence files under the evidence upload directory.
+    if candidate_rel_path.startswith("static/uploads/evidence/") and os.path.commonpath([safe_delete_root, candidate_abs_path]) == safe_delete_root:
+        if os.path.isfile(candidate_abs_path):
+            os.remove(candidate_abs_path)
+            deleted_from_disk = True
+
+    return {
+        "organization_id": org_id,
+        "control_node_id": item_id,
+        "control_id": control_id_value,
+        "deleted_path": requested_path,
+        "deleted_from_disk": deleted_from_disk,
+        "attached_files": updated_files
+    }
 
 
 @router.get("/dashboard/compliance")
@@ -460,6 +970,122 @@ async def get_risk_by_status_graph(
         })
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dashboard/export/risks")
+async def export_risks_data(
+    format: str = Query("excel"),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    org_id = current_user.get("org_id")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="Organization ID not found in user token")
+
+    query = """
+    MATCH (r:risks)
+    WHERE r.organization_id = $org_id
+      AND (r.is_deleted IS NULL OR toLower(toString(r.is_deleted)) <> 'true')
+    RETURN r
+    ORDER BY coalesce(r.created_at, '') DESC
+    """
+    result = await db.run(query, org_id=org_id)
+    records = await result.data()
+    rows = [sanitize_for_json(dict(record.get("r") or {})) for record in records]
+    rows = await _resolve_export_link_values(db, "risks", rows)
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="No risks found to export")
+
+    normalized_rows = [
+        {k: _serialize_export_value(v) for k, v in row.items()}
+        for row in rows
+    ]
+    return _build_export_response(normalized_rows, "risks_export", format.lower())
+
+
+@router.get("/dashboard/export/framework-controls")
+async def export_framework_controls_data(
+    framework: Optional[str] = Query(None),
+    framework_id: Optional[str] = Query(None),
+    format: str = Query("excel"),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    org_id = current_user.get("org_id")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="Organization ID not found in user token")
+
+    frameworks_query = """
+    MATCH (f:framework)
+    RETURN DISTINCT f.id AS id, f.framework_name AS framework_name
+    ORDER BY toLower(f.framework_name) ASC
+    """
+    frameworks_result = await db.run(frameworks_query)
+    frameworks_records = await frameworks_result.data()
+
+    frameworks = [
+        {
+            "id": rec.get("id"),
+            "label": rec.get("framework_name")
+        }
+        for rec in frameworks_records
+        if rec.get("id") and rec.get("framework_name")
+    ]
+
+    if not frameworks:
+        raise HTTPException(status_code=404, detail="No frameworks found")
+
+    requested_framework = framework or framework_id
+    framework_ids = {item["id"] for item in frameworks}
+    selected_framework_id = requested_framework if requested_framework in framework_ids else frameworks[0]["id"]
+    selected_framework = next(item for item in frameworks if item["id"] == selected_framework_id)
+
+    controls_query = """
+    MATCH (c:control)
+    WHERE
+        EXISTS {
+            MATCH (f:framework {id: $framework_id})-[:owns]->(c)
+        }
+        OR toLower(trim(toString(c.framework))) = toLower(trim($framework_id))
+        OR toLower(trim(toString(c.framework))) = toLower(trim($framework_name))
+    OPTIONAL MATCH (ca:control_assessment {control_id: c.control_id, organization_id: $org_id})
+    RETURN c,
+           coalesce(ca.control_compliance, 'Non Compliant') AS compliance_status,
+           coalesce(ca.control_rating, 'Low') AS rating
+    ORDER BY
+        toInteger(split(toString(c.control_id), '.')[0]) ASC,
+        CASE WHEN size(split(toString(c.control_id), '.')) > 1
+             THEN toInteger(split(toString(c.control_id), '.')[1])
+             ELSE 0 END ASC
+    """
+    controls_result = await db.run(
+        controls_query,
+        framework_id=selected_framework_id,
+        framework_name=selected_framework["label"],
+        org_id=org_id
+    )
+    controls_records = await controls_result.data()
+
+    rows = []
+    for record in controls_records:
+        control = dict(record.get("c") or {})
+        control["framework_id"] = selected_framework_id
+        control["framework_name"] = selected_framework["label"]
+        control["compliance_status"] = record.get("compliance_status")
+        control["rating"] = record.get("rating")
+        rows.append(sanitize_for_json(control))
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="No controls found for selected framework")
+
+    normalized_rows = [
+        {k: _serialize_export_value(v) for k, v in row.items()}
+        for row in rows
+    ]
+    safe_framework = selected_framework_id.replace(" ", "_")
+    filename = f"framework_controls_{safe_framework}"
+    return _build_export_response(normalized_rows, filename, format.lower())
 
 
 # ============== GENERIC CRUD ROUTES ==============

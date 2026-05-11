@@ -242,18 +242,20 @@ async def upload_files(files: List[UploadFile] = File(...)):
     filepaths = []
 
     for file in files:
-        ext = os.path.splitext(file.filename)[1]  # get extension
-        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
-        unique_id = uuid.uuid4().hex[:6]  # add uniqueness
-        new_filename = f"{timestamp}_{unique_id}{ext}"
+        original_name = os.path.basename((file.filename or "").strip())
+        original_name = original_name.replace("\\", "_").replace("/", "_")
+        new_filename = original_name or "uploaded_file"
         full_path = os.path.join(BASE_UPLOAD_DIR, new_filename)
 
         with open(full_path, "wb") as f:
             content = await file.read()
             f.write(content)
 
-        relative_path = full_path.replace(os.sep, "/")  # for URL-friendly path
-        filepaths.append(relative_path)
+        relative_path = "/" + full_path.replace(os.sep, "/").lstrip("/")
+        filepaths.append({
+            "name": new_filename,
+            "url": relative_path
+        })
 
     return {"uploaded_paths": filepaths}
 

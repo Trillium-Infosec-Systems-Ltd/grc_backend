@@ -4,6 +4,7 @@ from services.schema_loader import load_schema
 import uuid
 from neo4j import AsyncDriver
 import json
+import ast
 from datetime import datetime
 from typing import Any, Dict
 import json
@@ -18,6 +19,47 @@ PAIRED_CONTROL_IDS = [
     ("A.5.2", "EGC-C-05"),
     # ("X.Y.Z", "EGC-C-XX"),  # add more pairs here
 ]
+
+
+def _normalize_file_list(value):
+    def _extract_url(item):
+        if item is None:
+            return ""
+        if isinstance(item, dict):
+            return str(item.get("url") or item.get("path") or "").strip()
+
+        text = str(item).strip()
+        if not text:
+            return ""
+
+        # Recover legacy values sent as stringified dicts.
+        if text.startswith("{") and text.endswith("}"):
+            try:
+                parsed = ast.literal_eval(text)
+                if isinstance(parsed, dict):
+                    return str(parsed.get("url") or parsed.get("path") or "").strip()
+            except Exception:
+                pass
+        return text
+
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [u for u in (_extract_url(v) for v in value) if u]
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        if text.startswith("["):
+            try:
+                parsed = json.loads(text)
+                if isinstance(parsed, list):
+                    return [u for u in (_extract_url(v) for v in parsed) if u]
+            except Exception:
+                pass
+        return [part.strip() for part in text.split(",") if part.strip()]
+    single = _extract_url(value)
+    return [single] if single else []
 
 def _get_paired_control_id(control_id_value: str) -> str | None:
     """Return the paired control_id for a given control_id, or None if no pair exists."""
@@ -562,6 +604,7 @@ class GenericCRUD:
                         assessment = record["a"]
                         node["rating"] = assessment.get("control_rating", "Low")
                         node["compliance_status"] = assessment.get("control_compliance", "Non Compliant")
+                        node["attached_files"] = _normalize_file_list(assessment.get("attached_files", []))
                         control_assesment_flag = True
 
             for field in self.schema["fields"]:
@@ -607,6 +650,7 @@ class GenericCRUD:
                     if not control_assesment_flag:
                         node["rating"] = "Low"
                         node["compliance_status"] = "Non Compliant"
+                        node["attached_files"] = []
 
             items.append({
                 "node": node,
@@ -828,6 +872,10 @@ class GenericCRUD:
         now = datetime.utcnow().isoformat()
         data["updated_at"] = now
 
+        # Ensure attached_files is always stored as list[str] (URLs/paths), not list[map].
+        if "attached_files" in data:
+            data["attached_files"] = _normalize_file_list(data.get("attached_files"))
+
         # ✅ Special handling for control_question
         if self.doctype == "control_question" and isinstance(data.get("question"), list):
             control_id = data.get("control_id")
@@ -890,6 +938,7 @@ class GenericCRUD:
                 "remarks": data.get("remarks", ""),
                 "observation": data.get("observation", ""),
                 "reference_evidence" : data.get("reference_evidence", ""),
+                "attached_files": _normalize_file_list(data.get("attached_files", [])),
                 "next_review_date": data.get("next_review_date", ""),
                 "control_applicable": data.get("control_applicable", "Yes"),
                 "created_at": now,
@@ -961,6 +1010,7 @@ class GenericCRUD:
                 "remarks": data.get("remarks", ""),
                 "observation": data.get("observation", ""),
                 "reference_evidence" : data.get("reference_evidence", ""),
+                "attached_files": _normalize_file_list(data.get("attached_files", [])),
                 "next_review_date": data.get("next_review_date", ""),
                 "control_applicable": data.get("control_applicable", "Yes"),
                 "control_rating": data["rating"],
@@ -1280,6 +1330,7 @@ class GenericCRUD:
             "remarks": assessment_data_source.get("remarks", ""),
             "observation": assessment_data_source.get("observation", ""),
             "reference_evidence": assessment_data_source.get("reference_evidence", ""),
+            "attached_files": _normalize_file_list(assessment_data_source.get("attached_files", [])),
             "next_review_date": assessment_data_source.get("next_review_date", ""),
             "control_applicable": assessment_data_source.get("control_applicable", "Yes"),
             "created_at": now,
