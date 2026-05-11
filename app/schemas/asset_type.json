@@ -4,7 +4,7 @@
       {
         "fieldname": "type_name",
         "fieldtype": "Data",
-        "label": "Type Name",
+        "label": "Category Name",
         "default_label": true,
         "required": true,
         "display_on_frontend": true,
