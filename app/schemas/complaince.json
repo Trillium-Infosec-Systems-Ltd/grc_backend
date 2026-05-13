@@ -148,6 +148,16 @@
       "required": false
     },
     {
+      "fieldname": "attached_files",
+      "fieldtype": "File",
+      "label": "Attached Evidence / Files",
+      "display_on_frontend": true,
+      "span": 12,
+      "required": false,
+      "display_on_field": "control_applicable",
+      "display_on_value": "Yes"
+    },
+    {
       "fieldname": "next_review_date",
       "fieldtype": "Date",
       "label": "Next Review Date",

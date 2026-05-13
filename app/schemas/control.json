@@ -202,8 +202,10 @@
       "fieldtype": "File",
       "label": "Attached Evidence / Files",
       "span": 12,
-      "hidden": true,
-      "display_on_frontend": false
+      "hidden": false,
+      "display_on_frontend": true,
+      "display_on_field": "control_applicable",
+      "display_on_value": "Yes"
     },
      {
       "fieldname": "control_applicable",
