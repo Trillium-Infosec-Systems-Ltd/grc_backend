@@ -2,46 +2,33 @@
   "doctype": "control_question",
   "fields": [
     {
-      "fieldname": "control_id",
-      "fieldtype": "Link",
-      "label": "Control",
-      "link_to": "control",
-      "target_field":"control_id",
-      "relationship_direction":"incoming",
-      "relationship_type":"has_question",
-      "display_on_frontend": false,
+      "fieldname": "text",
+      "fieldtype": "LongText",
+      "label": "Question",
       "span": 24,
-      "required": true,
-      "is_edit_disabled":true,
-      "is_filter":true
+      "display_on_frontend": true,
+      "required": false
     },
     {
-      "fieldname": "control",
-      "fieldtype": "data",
-      "label": "Control",
-      "span": 12,
-      "display_on_frontend": true,
-      "required": false,
-      "hidden": true,
-      "is_filter":true
-      
-    },
+        "fieldname": "control_id",
+        "fieldtype": "MultiLink",
+        "label": "Attached Controls",
+        "link_to": "control",
+        "target_field":"control_id",
+        "relationship_direction": "incoming",
+        "relationship_type": "has_question",
+        "display_on_frontend": true,
+        "required": false,
+        "span": 24,
+       "is_filter":true
+      },
     {
       "fieldname": "description",
       "fieldtype": "LongText",
       "label": "Description",
       "span": 24,
-      "display_on_frontend": true,
-      "required": false
-    },
-
-    {
-      "fieldname": "question",
-      "fieldtype": "form_list_question",
-      "label": "Control Questions",
       "display_on_frontend": false,
-      "span": 24,
-      "required": true
+      "required": false
     },
     {
       "fieldname": "created_at",
