@@ -789,6 +789,30 @@ class GenericCRUD:
         }
 
     async def get_by_id(self, item_id: str):
+        # Special handling for control_question - return canonical question with controls
+        if self.doctype == "control_question":
+            # Check if it's a canonical question (question-xxx format)
+            if item_id.startswith("question-"):
+                query = """
+                MATCH (n:question {id: $item_id})
+                OPTIONAL MATCH (c:control)-[:HAS_QUESTION]->(n)
+                WITH n, collect(DISTINCT c.control_id) AS control_ids, collect(DISTINCT c) AS controls
+                RETURN n, control_ids, controls
+                """
+                result = await self.session.run(query, item_id=item_id)
+                record = await result.single()
+                if record:
+                    node = dict(record["n"])
+                    control_ids = record.get("control_ids", [])
+                    # Format for frontend: control_id = list of control IDs
+                    node["control_id"] = control_ids if control_ids else []
+                    return {
+                        "node": node,
+                        "relationships": []
+                    }
+                return None
+        
+        # Default handling for other doctypes
         query = f"""
         MATCH (n:{self.doctype} {{id: $item_id}})
         OPTIONAL MATCH (source)-[r1]->(n)
