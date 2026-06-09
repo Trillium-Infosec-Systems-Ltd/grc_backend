@@ -1507,14 +1507,25 @@ class GenericCRUD:
         weight = float(data.get("weight", 1) or 1)
         description = data.get("description", "").strip()
         
-        # Parse control_id (accept list or comma-separated string)
+        # Parse control_id (now expecting database IDs like "control-123")
         control_id_raw = data.get("control_id", [])
         if isinstance(control_id_raw, list):
-            new_control_ids = [c.strip() for c in control_id_raw if c and str(c).strip()]
+            control_db_ids = [c.strip() for c in control_id_raw if c and str(c).strip()]
         elif isinstance(control_id_raw, str):
-            new_control_ids = [c.strip() for c in control_id_raw.split(",") if c.strip()]
+            control_db_ids = [c.strip() for c in control_id_raw.split(",") if c.strip()]
         else:
-            new_control_ids = []
+            control_db_ids = []
+        
+        # Convert database IDs to control_id values for relationships
+        new_control_ids = []
+        for db_id in control_db_ids:
+            result = await self.session.run(
+                "MATCH (c:control {id: $db_id}) RETURN c.control_id AS cid",
+                db_id=db_id
+            )
+            record = await result.single()
+            if record and record["cid"]:
+                new_control_ids.append(record["cid"])
         
         # Update question properties
         await self.session.run(
@@ -1562,14 +1573,25 @@ class GenericCRUD:
         weight = float(data.get("weight", 1) or 1)
         description = data.get("description", "").strip()
         
-        # Parse control_id (accept list or comma-separated string)
+        # Parse control_id (now expecting database IDs like "control-123")
         control_id_raw = data.get("control_id", [])
         if isinstance(control_id_raw, list):
-            control_ids = [c.strip() for c in control_id_raw if c and str(c).strip()]
+            control_db_ids = [c.strip() for c in control_id_raw if c and str(c).strip()]
         elif isinstance(control_id_raw, str):
-            control_ids = [c.strip() for c in control_id_raw.split(",") if c.strip()]
+            control_db_ids = [c.strip() for c in control_id_raw.split(",") if c.strip()]
         else:
-            control_ids = []
+            control_db_ids = []
+        
+        # Convert database IDs to control_id values for relationships
+        control_ids = []
+        for db_id in control_db_ids:
+            result = await self.session.run(
+                "MATCH (c:control {id: $db_id}) RETURN c.control_id AS cid",
+                db_id=db_id
+            )
+            record = await result.single()
+            if record and record["cid"]:
+                control_ids.append(record["cid"])
         
         if not text:
             raise ValueError("Question text is required")
