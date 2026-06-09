@@ -804,8 +804,8 @@ class GenericCRUD:
                 if record:
                     node = dict(record["n"])
                     control_ids = record.get("control_ids", [])
-                    # Format for frontend: control_id = list of control IDs
-                    node["control_id"] = control_ids if control_ids else []
+                    # Format for frontend: control_id = comma-separated string
+                    node["control_id"] = ", ".join(control_ids) if control_ids else ""
                     return {
                         "node": node,
                         "relationships": []
