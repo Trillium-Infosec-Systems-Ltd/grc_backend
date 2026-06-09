@@ -186,49 +186,63 @@ async def get_schema(
                     doc_data["attached_files"] = _attached_file_objects(assessment.get("attached_files", []))
                     doc_data["next_review_date"] = assessment.get("next_review_date", "")
                     doc_data["control_applicable"] = assessment.get("control_applicable", "Yes")
-                    # Parse questions if present
-                    questions_raw = assessment.get("control_assessment")
-                    if questions_raw:
-                        try:
-                            questions = json.loads(questions_raw) if isinstance(questions_raw, str) else questions_raw
-                        except Exception:
-                            questions = []
-                    doc_data["control_assessment"] = questions
+                    # Always load fresh question answers from shared question_response nodes
+                    # (not from stale control_assessment JSON stored in the node)
                     assessment_found = True
 
 
-            if not assessment_found:
-                print("no assessment found")
-                # Fallback: derive questions from control_question nodes
-                query = """
-                        MATCH (q:control_question)
-                        WHERE q.control = $control_id
-                        RETURN q
+            # ALWAYS load fresh question answers from shared question_response nodes (if org_id exists)
+            # This ensures cross-framework sync works — answers are shared across all controls
+            if org_id:
+                canon_query = """
+                MATCH (c:control {control_id: $control_id})-[:HAS_QUESTION]->(q:question)
+                OPTIONAL MATCH (q)-[:HAS_RESPONSE]->(r:question_response {organization_id: $org_id})
+                RETURN q.id AS qid, q.text AS text, q.weight AS weight,
+                       r.answer AS answer, r.evidence AS evidence, r.remarks AS remarks
+                ORDER BY q.text
                 """
-                result = await crud.session.run(query, control_id=control_id)
-                async for record in result:
+                canon_result = await crud.session.run(canon_query, control_id=control_id, org_id=org_id)
+                async for rec in canon_result:
+                    questions.append({
+                        "question": rec["text"],
+                        "answer": bool(rec["answer"]) if rec["answer"] is not None else False,
+                        "weight": float(rec["weight"] or 1.0),
+                        "question_id": rec["qid"],
+                        "evidence": rec["evidence"] or "",
+                        "remarks": rec["remarks"] or "",
+                    })
+
+            # Fallback to legacy control_question nodes if no canonical questions found
+            if not questions:
+                legacy_query = """
+                MATCH (q:control_question)
+                WHERE q.control = $control_id
+                RETURN q
+                """
+                legacy_result = await crud.session.run(legacy_query, control_id=control_id)
+                async for record in legacy_result:
                     q_node = record["q"]
                     q_dict = dict(q_node)
                     questions_text = q_dict.get("questions_text", [])
                     question_weightage = q_dict.get("weights", [])
                     q_list = [
-                        {"question": text, "answer": False, "weight": weight}
+                        {"question": text, "answer": False, "weight": float(weight or 1.0)}
                         for text, weight in zip(questions_text, question_weightage)
                     ]
                     questions.extend(q_list)
-                    
 
+            # Set defaults only if no assessment node was found
+            if not assessment_found:
                 doc_data["rating"] = "Low"
                 doc_data["compliance_status"] = "Non Compliant"
-                doc_data["control_assessment"] = questions
                 doc_data["remarks"] = ""
                 doc_data["observation"] = ""
                 doc_data["reference_evidence"] = ""
                 doc_data["attached_files"] = []
-                doc_data["next_review_date"] = ""
-                doc_data["control_applicable"] = "Yes"
 
-                # Set ease_of_exploitation based on rating (case-insensitive, Low->Low, Medium->Medium, High->High)
+            doc_data["control_assessment"] = questions
+
+            # Set ease_of_exploitation based on rating (case-insensitive, Low->Low, Medium->Medium, High->High)
             ease_map = {
                 "High": "Low",
                 "Medium": "Medium",

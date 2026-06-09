@@ -13,12 +13,37 @@ from services.database import get_db
 import json
 from fastapi.responses import JSONResponse
 
-# Hardcoded paired control IDs: when one becomes Compliant/Non-Compliant,
-# the paired control should mirror the same status. Add more pairs as needed.
-PAIRED_CONTROL_IDS = [
-    ("A.5.2", "EGC-C-05"),
-    # ("X.Y.Z", "EGC-C-XX"),  # add more pairs here
-]
+import re as _re
+
+
+def _normalize_question_text(text: str) -> str:
+    """Lower-case + collapse whitespace for stable question dedup key."""
+    return _re.sub(r"\s+", " ", str(text or "").strip().lower())
+
+
+def _derive_compliance(answered: int, total: int, weighted_yes: float, weighted_total: float) -> str:
+    """
+    Compute a control's compliance status from its question responses.
+      - weighted_yes / weighted_total >= 1.0  => Compliant
+      - weighted_yes / weighted_total >  0.0  => Partially Compliant
+      - otherwise                             => Non Compliant
+    Falls back to simple answered/total when weights are zero.
+    """
+    if total == 0:
+        return "Non Compliant"
+    if weighted_total <= 0:
+        if answered == total:
+            return "Compliant"
+        if answered > 0:
+            return "Partially Compliant"
+        return "Non Compliant"
+    ratio = weighted_yes / weighted_total
+    if ratio >= 1.0:
+        return "Compliant"
+    if ratio > 0.0:
+        return "Partially Compliant"
+    return "Non Compliant"
+
 
 
 def _normalize_file_list(value):
@@ -60,15 +85,6 @@ def _normalize_file_list(value):
         return [part.strip() for part in text.split(",") if part.strip()]
     single = _extract_url(value)
     return [single] if single else []
-
-def _get_paired_control_id(control_id_value: str) -> str | None:
-    """Return the paired control_id for a given control_id, or None if no pair exists."""
-    for a, b in PAIRED_CONTROL_IDS:
-        if control_id_value == a:
-            return b
-        if control_id_value == b:
-            return a
-    return None
 
 
 class GenericCRUD:
@@ -241,7 +257,11 @@ class GenericCRUD:
 
     async def create(self, data: dict):
 
-        # Special case for 'control_question' with multiple questions
+        # Special case for 'control_question' - canonical question creation (new format)
+        if self.doctype == "control_question" and data.get("text"):
+            return await self._create_canonical_question(data)
+
+        # Legacy 'control_question' with multiple questions (old format)
         if self.doctype == "control_question" and isinstance(data.get("question"), list):
             control_id = data.get("control_id")  # This is now the control node id like "control-123"
             
@@ -318,13 +338,40 @@ class GenericCRUD:
             record = await result.single()
             node = record["n"]
 
-            # Create relationship
+            # Create legacy relationship (control -> control_question node)
             relation_query = f"""
             MATCH (target:control {{id: $control_id}})
             MATCH (source:{self.doctype} {{id: $question_id}})
             MERGE (target)-[:HAS_QUESTION]->(source)
             """
             await self.session.run(relation_query, control_id=control_id, question_id=node_id)
+
+            # Also create/merge canonical question nodes and link control -> question
+            for q_item in question_list:
+                q_text = str(q_item.get("question", "")).strip()
+                q_weight = float(q_item.get("wheightage", 1) or 1)
+                if not q_text:
+                    continue
+                dkey = f"{control}||{_normalize_question_text(q_text)}"
+                await self.session.run(
+                    """
+                    MERGE (q:question {dedup_key: $key})
+                    ON CREATE SET
+                        q.id             = 'question-' + toString(id(q)),
+                        q.text           = $text,
+                        q.weight         = $weight,
+                        q.iso_control_id = $iso_control_id,
+                        q.created_at     = $now,
+                        q.updated_at     = $now
+                    ON MATCH SET
+                        q.updated_at     = $now
+                    WITH q
+                    MATCH (c:control {id: $ctrl_node_id})
+                    MERGE (c)-[:HAS_QUESTION]->(q)
+                    """,
+                    key=dkey, text=q_text, weight=q_weight,
+                    iso_control_id=control, ctrl_node_id=control_id, now=now,
+                )
 
             return {
                 "control_id": control_id,
@@ -560,30 +607,83 @@ class GenericCRUD:
             order_clause = "ORDER BY n.created_at DESC"
 
         # Get main data
-        data_query = f"""
-        MATCH (n:{self.doctype})
-        {where_str}
-        OPTIONAL MATCH (source)-[r1]->(n)
-        WITH n, collect(DISTINCT {{
-            direction: "incoming",
-            type: type(r1),
-            node: source
-        }}) AS incoming_rels
-        OPTIONAL MATCH (n)-[r2]->(target)
-        WITH n, incoming_rels, collect(DISTINCT {{
-            direction: "outgoing",
-            type: type(r2),
-            node: target
-        }}) AS outgoing_rels
-        RETURN n, incoming_rels + outgoing_rels AS relationships
-        {order_clause}
-        SKIP $skip
-        LIMIT $limit
-        """
+        if self.doctype == "control":
+            data_query = f"""
+            MATCH (n:control)
+            {where_str}
+            OPTIONAL MATCH (source)-[r1]->(n)
+            WITH n, collect(DISTINCT {{
+                direction: "incoming",
+                type: type(r1),
+                node: source
+            }}) AS incoming_rels
+            OPTIONAL MATCH (n)-[r2]->(target)
+            WITH n, incoming_rels, collect(DISTINCT {{
+                direction: "outgoing",
+                type: type(r2),
+                node: target
+            }}) AS outgoing_rels
+            RETURN n, incoming_rels + outgoing_rels AS relationships
+            {order_clause}
+            SKIP $skip
+            LIMIT $limit
+            """
+        elif self.doctype == "control_question":
+            # Fetch canonical questions with attached controls for frontend display
+            data_query = f"""
+            MATCH (n:question)
+            {where_str}
+            OPTIONAL MATCH (c:control)-[:HAS_QUESTION]->(n)
+            WITH n, collect(DISTINCT c.control_id) AS control_ids, collect(DISTINCT c) AS controls
+            RETURN n, control_ids, controls
+            ORDER BY n.text
+            SKIP $skip
+            LIMIT $limit
+            """
+        else:
+            data_query = f"""
+            MATCH (n:{self.doctype})
+            {where_str}
+            OPTIONAL MATCH (source)-[r1]->(n)
+            WITH n, collect(DISTINCT {{
+                direction: "incoming",
+                type: type(r1),
+                node: source
+            }}) AS incoming_rels
+            OPTIONAL MATCH (n)-[r2]->(target)
+            WITH n, incoming_rels, collect(DISTINCT {{
+                direction: "outgoing",
+                type: type(r2),
+                node: target
+            }}) AS outgoing_rels
+            RETURN n, incoming_rels + outgoing_rels AS relationships
+            {order_clause}
+            SKIP $skip
+            LIMIT $limit
+            """
         data_result = await self.session.run(data_query, **params)
         records = await data_result.data()
 
         items = []
+
+        # Special handling for control_question - return canonical questions with controls
+        if self.doctype == "control_question":
+            for record in records:
+                node = dict(record["n"])
+                control_ids = record.get("control_ids", [])
+                controls = record.get("controls", [])
+                # Format for frontend: control_id = list of control IDs
+                node["control_id"] = control_ids if control_ids else []
+                items.append({
+                    "node": node,
+                    "relationships": []
+                })
+            return {
+                "total": total,
+                "skip": skip,
+                "limit": limit,
+                "items": items
+            }
 
         for record in records:
             node = dict(record["n"])
@@ -591,17 +691,37 @@ class GenericCRUD:
 
             if self.doctype == "control":
                 control_id = node.get("control_id")
-                print(repr(control_id))
                 control_assesment_flag = False
+
+                # Extract framework from incoming relationships (framework node has framework_name)
+                fw_val = node.get("framework")
+                print(f"[MARKER] BEFORE: control_id={control_id}, fw_val={fw_val}")
+                if not fw_val:
+                    for rel in relationships:
+                        if rel.get("direction") == "incoming":
+                            rel_node = rel.get("node", {})
+                            # Handle both dict and Neo4j Node
+                            if isinstance(rel_node, dict):
+                                fn = rel_node.get("framework_name")
+                            else:
+                                # Neo4j Node - convert to dict
+                                fn = dict(rel_node).get("framework_name") if hasattr(rel_node, '__iter__') else None
+                            if fn:
+                                fw_val = fn
+                                print(f"[MARKER] Found in rel: {fw_val}")
+                                break
+                node["framework"] = fw_val if fw_val else "MISSING"
+                print(f"[MARKER] AFTER: node.framework={node.get('framework')}")
+
                 if org_id and control_id:
                     assessment_query = """
                         MATCH (a:control_assessment {control_id: $control_id, organization_id: $org_id})
                         RETURN a
                     """
                     result = await self.session.run(assessment_query, control_id=control_id, org_id=org_id)
-                    record = await result.single()
-                    if record and record.get("a"):
-                        assessment = record["a"]
+                    assessment_record = await result.single()
+                    if assessment_record and assessment_record.get("a"):
+                        assessment = assessment_record["a"]
                         node["rating"] = assessment.get("control_rating", "Low")
                         node["compliance_status"] = assessment.get("control_compliance", "Non Compliant")
                         node["attached_files"] = _normalize_file_list(assessment.get("attached_files", []))
@@ -616,6 +736,9 @@ class GenericCRUD:
                 direction = field.get("relationship_direction", field.get("relation_direction", "outgoing"))
 
                 if fieldtype not in ["Link", "MultiLink"]:
+                    continue
+                # Skip framework field - we already populated it manually from owns relationship
+                if fieldname == "framework":
                     continue
 
                 matched_nodes = []
@@ -652,6 +775,7 @@ class GenericCRUD:
                         node["compliance_status"] = "Non Compliant"
                         node["attached_files"] = []
 
+            print(f"[DEBUG] Appending item: node.framework={node.get('framework')}, control_id={node.get('control_id')}")
             items.append({
                 "node": node,
                 "relationships": relationships
@@ -877,13 +1001,20 @@ class GenericCRUD:
             data["attached_files"] = _normalize_file_list(data.get("attached_files"))
 
         # ✅ Special handling for control_question
-        if self.doctype == "control_question" and isinstance(data.get("question"), list):
+        if self.doctype == "control_question":
+            # Handle canonical question update (control_id as list or string)
             control_id = data.get("control_id")
-            description = data.get("description")
-            question_list = data.get("question", [])
+            if (isinstance(control_id, (str, list))) and data.get("text"):
+                return await self._update_canonical_question(item_id, data, now)
 
-            if not control_id or not question_list:
-                raise ValueError("Missing 'control' or 'question' list in update")
+            # Legacy control_question update (single control_id + question list)
+            if isinstance(data.get("question"), list):
+                control_id = data.get("control_id")
+                description = data.get("description")
+                question_list = data.get("question", [])
+
+                if not control_id or not question_list:
+                    raise ValueError("Missing 'control' or 'question' list in update")
 
             # Transform into flat structure for storage
             update_data = {
@@ -906,20 +1037,56 @@ class GenericCRUD:
                 return None
             node = record["n"]
 
-            # Delete existing HAS_QUESTION relationships
+            # Delete existing HAS_QUESTION relationships (legacy control_question node)
             delete_rel_query = f"""
             MATCH (n:{self.doctype} {{id: $item_id}})<-[r:HAS_QUESTION]-(:control)
             DELETE r
             """
             await self.session.run(delete_rel_query, item_id=item_id)
 
-            # Create updated relationship to control
+            # Re-create legacy relationship to control
             relation_query = f"""
             MATCH (target:control {{control_id: $control_id}})
             MATCH (source:{self.doctype} {{id: $item_id}})
             MERGE (target)-[:HAS_QUESTION]->(source)
             """
             await self.session.run(relation_query, control_id=control_id, item_id=item_id)
+
+            # Refresh canonical question nodes for each question in the updated list
+            ctrl_node_result = await self.session.run(
+                "MATCH (c:control {control_id: $cid}) RETURN c.id AS node_id LIMIT 1",
+                cid=control_id,
+            )
+            ctrl_rec = await ctrl_node_result.single()
+            ctrl_node_id = ctrl_rec["node_id"] if ctrl_rec else None
+
+            for q_item in question_list:
+                q_text = str(q_item.get("question", "")).strip()
+                q_weight = float(q_item.get("wheightage", 1) or 1)
+                if not q_text or not ctrl_node_id:
+                    continue
+                dkey = f"{control_id}||{_normalize_question_text(q_text)}"
+                await self.session.run(
+                    """
+                    MERGE (q:question {dedup_key: $key})
+                    ON CREATE SET
+                        q.id             = 'question-' + toString(id(q)),
+                        q.text           = $text,
+                        q.weight         = $weight,
+                        q.iso_control_id = $iso_control_id,
+                        q.created_at     = $now,
+                        q.updated_at     = $now
+                    ON MATCH SET
+                        q.weight         = $weight,
+                        q.updated_at     = $now
+                    WITH q
+                    MATCH (c:control {id: $ctrl_node_id})
+                    MERGE (c)-[:HAS_QUESTION]->(q)
+                    """,
+                    key=dkey, text=q_text, weight=q_weight,
+                    iso_control_id=control_id, ctrl_node_id=ctrl_node_id,
+                    now=now,
+                )
 
             return {"n": node, "id": item_id}
 
@@ -982,21 +1149,29 @@ class GenericCRUD:
                     assessment_data=assessment_data
                 )
 
-            # Trigger: When control becomes Compliant, check vulnerabilities
-            if data.get("compliance_status") == "Compliant":
-                await self._handle_compliant_control_trigger(item_id, assessment_data["organization_id"])
-
-            # Trigger: When control becomes Non Compliant, restore vulnerabilities
-            if data.get("compliance_status") == "Non Compliant":
-                await self._handle_non_compliant_control_trigger(item_id, assessment_data["organization_id"])
-
-            # Sync hardcoded paired control compliance
-            await self._sync_paired_control_compliance(
-                control_id_value=data["control_id"],
-                compliance_status=data.get("compliance_status", "Non Compliant"),
-                organization_id=assessment_data["organization_id"],
-                assessment_data_source=assessment_data,
-            )
+            # Upsert per-question responses and propagate compliance across all
+            # controls that share these questions (cross-framework sync).
+            try:
+                raw_answers = json.loads(data["control_assessment"]) if isinstance(data["control_assessment"], str) else data.get("control_assessment", [])
+                if isinstance(raw_answers, list) and raw_answers:
+                    await self._upsert_question_responses(
+                        control_id_value=data["control_id"],
+                        organization_id=assessment_data["organization_id"],
+                        answer_list=raw_answers,
+                    )
+                else:
+                    # No question answers in payload — still fire triggers for the
+                    # manually set compliance status.
+                    if data.get("compliance_status") == "Compliant":
+                        await self._handle_compliant_control_trigger(item_id, assessment_data["organization_id"])
+                    else:
+                        await self._handle_non_compliant_control_trigger(item_id, assessment_data["organization_id"])
+            except Exception as _qe:
+                print(f"[QSYNC] Error upserting question responses: {_qe}")
+                if data.get("compliance_status") == "Compliant":
+                    await self._handle_compliant_control_trigger(item_id, assessment_data["organization_id"])
+                else:
+                    await self._handle_non_compliant_control_trigger(item_id, assessment_data["organization_id"])
 
         if self.doctype == "control" and data.get("control_assessment") is None:
            # Serialize
@@ -1055,16 +1230,8 @@ class GenericCRUD:
                     assessment_data=assessment_data
                 )
 
-            # Trigger: When control_assessment is None, default is Non Compliant, so restore vulnerabilities
+            # No answers provided, default Non Compliant — fire trigger only.
             await self._handle_non_compliant_control_trigger(item_id, assessment_data["organization_id"])
-
-            # Sync hardcoded paired control compliance
-            await self._sync_paired_control_compliance(
-                control_id_value=data["control_id"],
-                compliance_status="Non Compliant",
-                organization_id=assessment_data["organization_id"],
-                assessment_data_source=assessment_data,
-            )
 
         # ✅ Special handling for vulnerability soft-delete via update
         if self.doctype == "vulnerability" and data.get("is_deleted") == "true":
@@ -1296,76 +1463,284 @@ class GenericCRUD:
 
         return {"n": node, "id": item_id}
 
-    async def _sync_paired_control_compliance(self, control_id_value: str, compliance_status: str, organization_id: str, assessment_data_source: dict):
+    async def _update_canonical_question(self, item_id: str, data: dict, now: str):
         """
-        If control_id_value has a hardcoded pair, mirror the compliance_status
-        to the paired control's assessment and fire the same triggers.
+        Update canonical question node with new control relationships.
+        control_id is list of control_ids to attach.
         """
-        paired_control_id = _get_paired_control_id(control_id_value)
-        if not paired_control_id:
-            return
-
-        print(f"[PAIR SYNC] Syncing paired control {paired_control_id} to {compliance_status} (triggered by {control_id_value})")
-
-        # Find the paired control node by its control_id property
-        find_query = """
-        MATCH (c:control {control_id: $paired_control_id})
-        RETURN c.id AS node_id, c.control_id AS control_id_value
-        """
-        result = await self.session.run(find_query, paired_control_id=paired_control_id)
-        record = await result.single()
-        if not record:
-            print(f"[PAIR SYNC] Paired control {paired_control_id} not found in DB, skipping")
-            return
-
-        paired_node_id = record["node_id"]
-        now = datetime.utcnow().isoformat()
-
-        paired_assessment = {
-            "control_id": paired_control_id,
-            "organization_id": organization_id,
-            "control_compliance": compliance_status,
-            "control_rating": assessment_data_source.get("control_rating", assessment_data_source.get("rating", "Low")),
-            "control_assessment": assessment_data_source.get("control_assessment"),
-            "remarks": assessment_data_source.get("remarks", ""),
-            "observation": assessment_data_source.get("observation", ""),
-            "reference_evidence": assessment_data_source.get("reference_evidence", ""),
-            "attached_files": _normalize_file_list(assessment_data_source.get("attached_files", [])),
-            "next_review_date": assessment_data_source.get("next_review_date", ""),
-            "control_applicable": assessment_data_source.get("control_applicable", "Yes"),
-            "created_at": now,
-            "updated_at": now,
-        }
-
-        # Upsert paired control's assessment
-        check_query = """
-        MATCH (a:control_assessment {control_id: $control_id, organization_id: $organization_id})
-        RETURN a
-        """
-        res = await self.session.run(check_query, control_id=paired_control_id, organization_id=organization_id)
-        existing = await res.single()
-
-        if not existing:
-            create_query = """
-            CREATE (a:control_assessment $assessment_data)
-            RETURN a
-            """
-            await self.session.run(create_query, assessment_data=paired_assessment)
+        text = data.get("text", "").strip()
+        weight = float(data.get("weight", 1) or 1)
+        
+        # Parse control_id (accept list or comma-separated string)
+        control_id_raw = data.get("control_id", [])
+        if isinstance(control_id_raw, list):
+            new_control_ids = [c.strip() for c in control_id_raw if c and str(c).strip()]
+        elif isinstance(control_id_raw, str):
+            new_control_ids = [c.strip() for c in control_id_raw.split(",") if c.strip()]
         else:
-            update_query = """
-            MATCH (a:control_assessment {control_id: $control_id, organization_id: $organization_id})
-            SET a += $assessment_data
-            RETURN a
+            new_control_ids = []
+        
+        # Update question properties
+        await self.session.run(
             """
-            await self.session.run(update_query, control_id=paired_control_id, organization_id=organization_id, assessment_data=paired_assessment)
+            MATCH (q:question {id: $item_id})
+            SET q.text = $text, q.weight = $weight, q.updated_at = $now
+            """,
+            item_id=item_id, text=text, weight=weight, now=now
+        )
+        
+        # Delete existing HAS_QUESTION relationships
+        await self.session.run(
+            """
+            MATCH (c:control)-[r:HAS_QUESTION]->(q:question {id: $item_id})
+            DELETE r
+            """,
+            item_id=item_id
+        )
+        
+        # Create new HAS_QUESTION relationships
+        for cid in new_control_ids:
+            await self.session.run(
+                """
+                MATCH (q:question {id: $item_id})
+                MATCH (c:control {control_id: $cid})
+                MERGE (c)-[:HAS_QUESTION]->(q)
+                """,
+                item_id=item_id, cid=cid
+            )
+        
+        # Return updated node
+        result = await self.session.run(
+            "MATCH (q:question {id: $item_id}) RETURN q",
+            item_id=item_id
+        )
+        record = await result.single()
+        return {"n": record["q"] if record else {}, "id": item_id}
 
-        print(f"[PAIR SYNC] Updated assessment for paired control {paired_control_id}")
+    async def _create_canonical_question(self, data: dict):
+        """
+        Create new canonical question node with control relationships.
+        data: {text: str, control_id: list|str, weight: number}
+        """
+        text = data.get("text", "").strip()
+        weight = float(data.get("weight", 1) or 1)
+        
+        # Parse control_id (accept list or comma-separated string)
+        control_id_raw = data.get("control_id", [])
+        if isinstance(control_id_raw, list):
+            control_ids = [c.strip() for c in control_id_raw if c and str(c).strip()]
+        elif isinstance(control_id_raw, str):
+            control_ids = [c.strip() for c in control_id_raw.split(",") if c.strip()]
+        else:
+            control_ids = []
+        
+        if not text:
+            raise ValueError("Question text is required")
+        
+        now = datetime.utcnow().isoformat()
+        
+        # Generate question ID
+        id_query = """
+        MERGE (c:Counter {doctype: 'question'})
+        ON CREATE SET c.current = 1
+        ON MATCH SET c.current = c.current + 1
+        RETURN c.current AS new_id
+        """
+        result = await self.session.run(id_query)
+        record = await result.single()
+        new_id = record["new_id"]
+        question_id = f"question-{new_id}"
+        
+        # Create canonical question node
+        iso_control_id = control_ids[0] if control_ids else ""
+        dedup_key = f"{iso_control_id}||{_normalize_question_text(text)}"
+        
+        await self.session.run(
+            """
+            CREATE (q:question {
+                id: $qid,
+                text: $text,
+                weight: $weight,
+                iso_control_id: $iso_cid,
+                dedup_key: $dkey,
+                created_at: $now,
+                updated_at: $now
+            })
+            """,
+            qid=question_id, text=text, weight=weight, 
+            iso_cid=iso_control_id, dkey=dedup_key, now=now
+        )
+        
+        # Create HAS_QUESTION relationships to controls
+        for cid in control_ids:
+            await self.session.run(
+                """
+                MATCH (q:question {id: $qid})
+                MATCH (c:control {control_id: $cid})
+                MERGE (c)-[:HAS_QUESTION]->(q)
+                """,
+                qid=question_id, cid=cid
+            )
+        
+        # Return created node formatted for control_question API
+        result = await self.session.run(
+            "MATCH (q:question {id: $qid}) RETURN q",
+            qid=question_id
+        )
+        record = await result.single()
+        node = dict(record["q"]) if record else {}
+        node["control_id"] = control_ids
+        
+        return {"n": node, "id": question_id}
 
-        # Fire the same compliance triggers for the paired control
-        if compliance_status == "Compliant":
-            await self._handle_compliant_control_trigger(paired_node_id, organization_id)
-        elif compliance_status == "Non Compliant":
-            await self._handle_non_compliant_control_trigger(paired_node_id, organization_id)
+    async def _upsert_question_responses(self, control_id_value: str, organization_id: str, answer_list: list):
+        """
+        Persist per-question answers as question_response nodes.
+        answer_list is the deserialized control_assessment JSON: [{question, answer, weight?, ...}]
+
+        For each item we:
+          1. Resolve the canonical question node by (iso_control_id, normalized text).
+          2. MERGE a question_response node keyed by (question_id, organization_id).
+          3. Re-link question -[:HAS_RESPONSE]-> question_response.
+
+        After saving responses we propagate compliance to every control that shares
+        a question with this one (cross-framework synchronisation).
+        """
+        if not answer_list or not organization_id:
+            return
+
+        now = datetime.utcnow().isoformat()
+        changed_question_ids: list[str] = []
+
+        for item in answer_list:
+            if not isinstance(item, dict):
+                continue
+            q_text = str(item.get("question", "")).strip()
+            answer_val = bool(item.get("answer", False))
+            evidence = str(item.get("evidence", ""))
+            remarks = str(item.get("remarks", ""))
+            if not q_text:
+                continue
+
+            # Use question_id from frontend if available, else fall back to dedup_key lookup
+            q_id = item.get("question_id")
+            if not q_id:
+                dkey = f"{control_id_value}||{_normalize_question_text(q_text)}"
+                q_result = await self.session.run(
+                    "MATCH (q:question {dedup_key: $key}) RETURN q.id AS qid",
+                    key=dkey,
+                )
+                q_rec = await q_result.single()
+                if not q_rec:
+                    print(f"[QSAVE] Warning: Question not found for dedup_key={dkey}, text={q_text[:50]}")
+                    continue
+                q_id = q_rec["qid"]
+            changed_question_ids.append(q_id)
+            print(f"[QSAVE] Saving answer for q_id={q_id}, answer={answer_val}")
+
+            # Upsert question_response with evidence and remarks
+            await self.session.run(
+                """
+                MERGE (r:question_response {question_id: $qid, organization_id: $org_id})
+                ON CREATE SET
+                    r.id         = 'qr-' + toString(id(r)),
+                    r.answer     = $answer,
+                    r.evidence   = $evidence,
+                    r.remarks    = $remarks,
+                    r.created_at = $now,
+                    r.updated_at = $now
+                ON MATCH SET
+                    r.answer     = $answer,
+                    r.evidence   = $evidence,
+                    r.remarks    = $remarks,
+                    r.updated_at = $now
+                WITH r
+                MATCH (q:question {id: $qid})
+                MERGE (q)-[:HAS_RESPONSE]->(r)
+                """,
+                qid=q_id,
+                org_id=organization_id,
+                answer=answer_val,
+                evidence=evidence,
+                remarks=remarks,
+                now=now,
+            )
+
+        if not changed_question_ids:
+            return
+
+        # Find all controls that share any of these questions
+        affected_result = await self.session.run(
+            """
+            MATCH (c:control)-[:HAS_QUESTION]->(q:question)
+            WHERE q.id IN $qids
+            RETURN DISTINCT c.id AS ctrl_node_id, c.control_id AS ctrl_id_val
+            """,
+            qids=changed_question_ids,
+        )
+        affected_controls = await affected_result.data()
+
+        for ctrl in affected_controls:
+            ctrl_node_id = ctrl["ctrl_node_id"]
+            ctrl_id_val = ctrl["ctrl_id_val"]
+            if not ctrl_id_val or not ctrl_node_id:
+                continue
+
+            new_compliance = await self.recompute_control_compliance(ctrl_id_val, organization_id)
+            print(f"[QSYNC] Control {ctrl_id_val} recomputed => {new_compliance} for org {organization_id}")
+
+            # Fire vulnerability/risk triggers for this control
+            if new_compliance == "Compliant":
+                await self._handle_compliant_control_trigger(ctrl_node_id, organization_id)
+            else:
+                await self._handle_non_compliant_control_trigger(ctrl_node_id, organization_id)
+
+    async def recompute_control_compliance(self, control_id_value: str, organization_id: str) -> str:
+        """
+        Recompute and persist compliance status for (control_id_value, organization_id)
+        from the question_response nodes linked to that control's questions.
+        Returns the new compliance string.
+        """
+        result = await self.session.run(
+            """
+            MATCH (c:control {control_id: $cid})-[:HAS_QUESTION]->(q:question)
+            OPTIONAL MATCH (q)-[:HAS_RESPONSE]->(r:question_response {organization_id: $org_id})
+            RETURN q.weight AS weight, r.answer AS answer
+            """,
+            cid=control_id_value,
+            org_id=organization_id,
+        )
+        rows = await result.data()
+
+        if not rows:
+            return "Non Compliant"
+
+        total = len(rows)
+        answered = sum(1 for r in rows if r.get("answer") is True)
+        weighted_total = sum(float(r.get("weight") or 1.0) for r in rows)
+        weighted_yes = sum(
+            float(r.get("weight") or 1.0) for r in rows if r.get("answer") is True
+        )
+        new_compliance = _derive_compliance(answered, total, weighted_yes, weighted_total)
+
+        # Upsert the derived compliance into control_assessment
+        now = datetime.utcnow().isoformat()
+        await self.session.run(
+            """
+            MERGE (a:control_assessment {control_id: $cid, organization_id: $org_id})
+            ON CREATE SET a.control_compliance = $compliance,
+                          a.control_rating     = 'Low',
+                          a.created_at         = $now,
+                          a.updated_at         = $now
+            ON MATCH SET  a.control_compliance = $compliance,
+                          a.updated_at         = $now
+            """,
+            cid=control_id_value,
+            org_id=organization_id,
+            compliance=new_compliance,
+            now=now,
+        )
+        return new_compliance
 
     async def _handle_compliant_control_trigger(self, control_id: str, organization_id: str):
         """

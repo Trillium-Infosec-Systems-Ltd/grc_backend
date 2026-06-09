@@ -1,0 +1,77 @@
+{
+  "doctype": "question_response",
+  "fields": [
+    {
+      "fieldname": "question_id",
+      "fieldtype": "Link",
+      "label": "Question",
+      "link_to": "question",
+      "target_field": "id",
+      "relationship_type": "HAS_RESPONSE",
+      "relationship_direction": "incoming",
+      "display_on_frontend": false,
+      "span": 24,
+      "required": true,
+      "is_filter": true
+    },
+    {
+      "fieldname": "organization_id",
+      "fieldtype": "data",
+      "label": "Organization",
+      "span": 12,
+      "display_on_frontend": false,
+      "required": true,
+      "is_filter": true
+    },
+    {
+      "fieldname": "answer",
+      "fieldtype": "Check",
+      "label": "Answered / Compliant",
+      "span": 12,
+      "display_on_frontend": true,
+      "required": false
+    },
+    {
+      "fieldname": "evidence",
+      "fieldtype": "LongText",
+      "label": "Evidence",
+      "span": 24,
+      "display_on_frontend": true,
+      "required": false
+    },
+    {
+      "fieldname": "attached_files",
+      "fieldtype": "AttachList",
+      "label": "Attached Files",
+      "span": 24,
+      "display_on_frontend": true,
+      "required": false
+    },
+    {
+      "fieldname": "remarks",
+      "fieldtype": "LongText",
+      "label": "Remarks",
+      "span": 24,
+      "display_on_frontend": true,
+      "required": false
+    },
+    {
+      "fieldname": "created_at",
+      "fieldtype": "Datetime",
+      "label": "Created At",
+      "span": 12,
+      "display_on_frontend": false,
+      "required": false,
+      "hidden": true
+    },
+    {
+      "fieldname": "updated_at",
+      "fieldtype": "Datetime",
+      "label": "Updated At",
+      "span": 12,
+      "display_on_frontend": false,
+      "required": false,
+      "hidden": true
+    }
+  ]
+}

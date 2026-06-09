@@ -360,7 +360,8 @@ async def get_complaince_data(
         count_query = f"""
         MATCH (c:control)
         OPTIONAL MATCH (ca:control_assessment {{control_id: c.control_id, organization_id: $org_id}})
-        WITH c, ca
+        OPTIONAL MATCH (f:framework)-[:owns]->(c)
+        WITH c, ca, coalesce(f.framework_name, c.framework) AS framework_name
         {filter_str}
         RETURN count(c) AS total
         """
@@ -373,9 +374,9 @@ async def get_complaince_data(
         MATCH (c:control)
         OPTIONAL MATCH (ca:control_assessment {{control_id: c.control_id, organization_id: $org_id}})
         OPTIONAL MATCH (f:framework)-[:owns]->(c)
-        WITH c, ca, f
+        WITH c, ca, coalesce(f.framework_name, c.framework) AS framework_name
         {filter_str}
-        RETURN c, ca, f.framework_name AS framework_name
+        RETURN c, ca, framework_name
         ORDER BY
             toInteger(split(toString(c.control_id), '.')[0]) ASC,
             CASE WHEN size(split(toString(c.control_id), '.')) > 1
@@ -453,7 +454,7 @@ async def get_complaince_item(
         MATCH (c:control {id: $item_id})
         OPTIONAL MATCH (ca:control_assessment {control_id: c.control_id, organization_id: $org_id})
         OPTIONAL MATCH (f:framework)-[:owns]->(c)
-        RETURN c, ca, f.framework_name AS framework_name
+        RETURN c, ca, coalesce(f.framework_name, c.framework) AS framework_name
         """
 
         result = await db.run(query, item_id=item_id, org_id=org_id)
@@ -1316,3 +1317,235 @@ async def delete_all_items(
         raise HTTPException(404, detail=f"No items found for doctype '{doctype}'")
 
     return {"detail": f"Deleted all {count} {doctype} items successfully", "deleted_count": count}
+
+
+# ---------------------------------------------------------------------------
+# Question response endpoint
+# ---------------------------------------------------------------------------
+
+class QuestionResponsePayload(dict):
+    """Thin wrapper — accepts any dict with answer/evidence/remarks."""
+    pass
+
+
+@router.post("/question/{question_id}/response")
+async def upsert_question_response(
+    question_id: str,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Save a per-organization answer for a single canonical question node and
+    return the recomputed compliance status for every control that is linked
+    to that question.
+
+    Request body:
+        {
+            "answer": true | false,
+            "evidence": "optional string",
+            "remarks":  "optional string"
+        }
+
+    Response:
+        {
+            "question_id": "...",
+            "answer": true,
+            "affected_controls": [
+                {"control_id": "A.5.1", "control_node_id": "control-12", "compliance": "Compliant"},
+                ...
+            ]
+        }
+    """
+    org_id = current_user.get("org_id")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="Organization ID not found in user token")
+
+    answer_val = bool(body.get("answer", False))
+    evidence = str(body.get("evidence", ""))
+    remarks = str(body.get("remarks", ""))
+    now = datetime.utcnow().isoformat()
+
+    try:
+        # Verify the question exists
+        q_check = await db.run(
+            "MATCH (q:question {id: $qid}) RETURN q.id AS qid",
+            qid=question_id,
+        )
+        q_rec = await q_check.single()
+        if not q_rec:
+            raise HTTPException(status_code=404, detail=f"Question '{question_id}' not found")
+
+        # Upsert question_response node
+        await db.run(
+            """
+            MERGE (r:question_response {question_id: $qid, organization_id: $org_id})
+            ON CREATE SET
+                r.id         = 'qr-' + toString(id(r)),
+                r.answer     = $answer,
+                r.evidence   = $evidence,
+                r.remarks    = $remarks,
+                r.created_at = $now,
+                r.updated_at = $now
+            ON MATCH SET
+                r.answer     = $answer,
+                r.evidence   = $evidence,
+                r.remarks    = $remarks,
+                r.updated_at = $now
+            WITH r
+            MATCH (q:question {id: $qid})
+            MERGE (q)-[:HAS_RESPONSE]->(r)
+            """,
+            qid=question_id,
+            org_id=org_id,
+            answer=answer_val,
+            evidence=evidence,
+            remarks=remarks,
+            now=now,
+        )
+
+        # Find all controls linked to this question
+        affected_result = await db.run(
+            """
+            MATCH (c:control)-[:HAS_QUESTION]->(q:question {id: $qid})
+            RETURN DISTINCT c.id AS ctrl_node_id, c.control_id AS ctrl_id_val
+            """,
+            qid=question_id,
+        )
+        affected_controls_raw = await affected_result.data()
+
+        crud = GenericCRUD(db, "control", current_user=current_user)
+        affected_controls = []
+
+        for ctrl in affected_controls_raw:
+            ctrl_node_id = ctrl["ctrl_node_id"]
+            ctrl_id_val = ctrl["ctrl_id_val"]
+            if not ctrl_id_val or not ctrl_node_id:
+                continue
+
+            new_compliance = await crud.recompute_control_compliance(ctrl_id_val, org_id)
+            print(f"[QRESP] Control {ctrl_id_val} recomputed => {new_compliance} for org {org_id}")
+
+            if new_compliance == "Compliant":
+                await crud._handle_compliant_control_trigger(ctrl_node_id, org_id)
+            else:
+                await crud._handle_non_compliant_control_trigger(ctrl_node_id, org_id)
+
+            affected_controls.append({
+                "control_id": ctrl_id_val,
+                "control_node_id": ctrl_node_id,
+                "compliance": new_compliance,
+            })
+
+        return sanitize_for_json({
+            "question_id": question_id,
+            "answer": answer_val,
+            "affected_controls": affected_controls,
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/question/{question_id}/response")
+async def get_question_response(
+    question_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Get the current per-organization response for a question, plus which
+    controls it is linked to and their current compliance status.
+    """
+    org_id = current_user.get("org_id")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="Organization ID not found in user token")
+
+    try:
+        result = await db.run(
+            """
+            MATCH (q:question {id: $qid})
+            OPTIONAL MATCH (q)-[:HAS_RESPONSE]->(r:question_response {organization_id: $org_id})
+            OPTIONAL MATCH (c:control)-[:HAS_QUESTION]->(q)
+            OPTIONAL MATCH (ca:control_assessment {control_id: c.control_id, organization_id: $org_id})
+            RETURN
+                q.id AS question_id,
+                q.text AS text,
+                q.weight AS weight,
+                q.iso_control_id AS iso_control_id,
+                r.answer AS answer,
+                r.evidence AS evidence,
+                r.remarks AS remarks,
+                collect(DISTINCT {
+                    control_id: c.control_id,
+                    control_node_id: c.id,
+                    control_name: c.control_name,
+                    framework: c.framework,
+                    compliance: coalesce(ca.control_compliance, 'Non Compliant')
+                }) AS linked_controls
+            """,
+            qid=question_id,
+            org_id=org_id,
+        )
+        record = await result.single()
+        if not record:
+            raise HTTPException(status_code=404, detail=f"Question '{question_id}' not found")
+
+        return sanitize_for_json({
+            "question_id": record["question_id"],
+            "text": record["text"],
+            "weight": float(record["weight"] or 1.0),
+            "iso_control_id": record["iso_control_id"],
+            "answer": bool(record["answer"]) if record["answer"] is not None else False,
+            "evidence": record["evidence"] or "",
+            "remarks": record["remarks"] or "",
+            "linked_controls": [c for c in (record["linked_controls"] or []) if c.get("control_id")],
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/admin/backfill-control-framework")
+async def backfill_control_framework(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    One-time backfill: sets c.framework from the [:owns] relationship for all
+    control nodes missing the property, and creates [:owns] for controls that
+    have the property but no relationship. Safe to call multiple times.
+    """
+    try:
+        # Step 1: copy framework_name from relationship -> property where missing
+        r1 = await db.run("""
+            MATCH (f:framework)-[:owns]->(c:control)
+            WHERE c.framework IS NULL OR c.framework = ''
+            SET c.framework = f.framework_name
+            RETURN count(c) AS updated
+        """)
+        rec1 = await r1.single()
+        updated_from_rel = rec1["updated"] if rec1 else 0
+
+        # Step 2: create [:owns] for controls that have the property but no rel
+        r2 = await db.run("""
+            MATCH (c:control)
+            WHERE c.framework IS NOT NULL AND c.framework <> ''
+            MATCH (f:framework {framework_name: c.framework})
+            WHERE NOT (f)-[:owns]->(c)
+            MERGE (f)-[:owns]->(c)
+            RETURN count(c) AS linked
+        """)
+        rec2 = await r2.single()
+        linked = rec2["linked"] if rec2 else 0
+
+        return {
+            "controls_updated_from_relationship": updated_from_rel,
+            "controls_linked_to_framework": linked,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

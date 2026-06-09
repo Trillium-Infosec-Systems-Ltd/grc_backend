@@ -630,29 +630,307 @@ async def bulk_upload_nodes(
             )
 
         elif file.filename.endswith(".xlsx"):
-            # Use custom reader to better preserve text formatting for version-like values (e.g., "5.20")
-            df = read_excel_preserve_text(contents)
+            if doctype == "question_framework_mapping":
+                # Use plain pandas reader — preserves all text columns correctly
+                # and handles merged/empty header cells better than the custom reader
+                df = pd.read_excel(
+                    io.BytesIO(contents),
+                    dtype=str,
+                    keep_default_na=False,
+                    na_filter=False,
+                )
+            else:
+                # Use custom reader to better preserve text formatting for version-like values (e.g., "5.20")
+                df = read_excel_preserve_text(contents)
 
         else:
             raise HTTPException(status_code=400, detail="Unsupported file format")
 
         # Clean up whitespace
-        df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+        df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
 
         # Replace empty strings with None
         df = df.replace(r'^\s*$', None, regex=True)
 
         df = df.where(pd.notnull(df), None)  # Replace NaN with None
 
-        schema = load_schema(doctype)
-        field_map = {f["label"]: f["fieldname"] for f in schema["fields"]}
+        if doctype != "question_framework_mapping":
+            schema = load_schema(doctype)
+            field_map = {f["label"]: f["fieldname"] for f in schema["fields"]}
+        else:
+            schema = {"fields": []}
+            field_map = {}
         # required_fields = [f["fieldname"] for f in schema["fields"] if f.get("required")]
         required_fields = []
 
         created = []
         errors = []
 
-        if doctype == "control_question":
+        if doctype == "question_framework_mapping":
+            # ------------------------------------------------------------------
+            # Bulk-import canonical question nodes + cross-framework control
+            # mappings from the Question_Framework_Mapping.xlsx format.
+            #
+            # Expected columns:
+            #   Control ID  – ISO 27001 control id (carry-forward on blank rows)
+            #   Control     – ISO 27001 control name (carry-forward)
+            #   Question    – question text (one per row)
+            #   D/E … R/S  – framework clause IDs + names per pair
+            #
+            # All MERGE operations are idempotent so the endpoint is safe to
+            # call repeatedly.
+            # ------------------------------------------------------------------
+
+            FRAMEWORK_COLUMNS = [
+                ("PISF",         "PISF ID",         "PISF Control"),
+                ("NIST CSF 2.0", "NIST CSF 2.0 ID", "NIST CSF 2.0 Control"),
+                ("SBP ETGRMF",   "SBP ETGRMF ID",  "SBP ETGRMF Control"),
+                ("NEPRA",        "NEPRA ID",        "NEPRA Control"),
+                ("CIS v8",       "CIS v8 ID",       "CIS v8 Control"),
+                ("PCI DSS v4.0", "PCI DSS v4.0 ID", "PCI DSS v4.0 Control"),
+                ("PTA CTDISR",   "PTA CTDISR ID",   "PTA CTDISR Control"),
+                ("SOC 2",        "SOC 2 ID",        "SOC 2 Control"),
+            ]
+
+            # Re-derive column names from actual headers (positional fallback)
+            raw_cols = list(df.columns)
+
+            def _col(preferred: str, pos: int) -> str:
+                """Return preferred name if present, else column by position."""
+                if preferred in raw_cols:
+                    return preferred
+                if pos < len(raw_cols):
+                    return raw_cols[pos]
+                return preferred
+
+            # New sheet format: "ISO 27001", "ISO 27001 control", "question"
+            # Fallback to old format: "Control ID", "Control", "Question"
+            def _col_multi(preferred_list, pos):
+                for p in preferred_list:
+                    if p in raw_cols:
+                        return p
+                if pos < len(raw_cols):
+                    return raw_cols[pos]
+                return preferred_list[0]
+
+            col_control_id   = _col_multi(["ISO 27001", "Control ID"], 0)
+            col_control_name = _col_multi(["ISO 27001 control", "Control"], 1)
+            col_question     = _col_multi(["question", "Question"], 2)
+
+            # Apply positional fallback to each framework column pair
+            FRAMEWORK_COLUMNS = [
+                (fw, _col(id_col, 3 + i * 2), _col(nm_col, 4 + i * 2))
+                for i, (fw, id_col, nm_col) in enumerate(FRAMEWORK_COLUMNS)
+            ]
+
+            ISO_FW = "ISO 27001"
+            now_iso = datetime.utcnow().isoformat()
+
+            def _norm(text):
+                return re.sub(r"\s+", " ", str(text or "").strip().lower())
+
+            def _parse_ids(raw):
+                raw = str(raw or "").strip()
+                if not raw or raw.lower() in ("nan", "none", ""):
+                    return []
+                return [p.strip() for p in raw.split(",") if p.strip()]
+
+            stats = {"questions": 0, "controls": 0, "links": 0, "errors": 0}
+            seen_controls: set = set()   # (fw_name, ctrl_id_val)
+            seen_questions: set = set()  # dedup_key
+
+            # Ensure framework nodes exist
+            all_fw_names = [ISO_FW] + [fw for fw, _, _ in FRAMEWORK_COLUMNS]
+            for fw_name in all_fw_names:
+                fid = "framework-" + re.sub(r"[^a-z0-9]", "-", fw_name.lower())
+                await db.run(
+                    """
+                    MERGE (f:framework {framework_name: $name})
+                    ON CREATE SET f.id = $fid, f.created_at = $now, f.updated_at = $now
+                    ON MATCH SET  f.updated_at = $now
+                    """,
+                    name=fw_name, fid=fid, now=now_iso,
+                )
+
+            current_iso_ctrl_id   = ""
+            current_iso_ctrl_name = ""
+
+            for _, row in df.iterrows():
+                col_a = str(row.get(col_control_id,   "") or "").strip()
+                col_b = str(row.get(col_control_name, "") or "").strip()
+                col_c = str(row.get(col_question,     "") or "").strip()
+
+                # Carry-forward ISO control id / name
+                if col_a and col_a.lower() not in ("nan", "none"):
+                    current_iso_ctrl_id = col_a
+                if col_b and col_b.lower() not in ("nan", "none"):
+                    current_iso_ctrl_name = col_b
+
+                if not col_c or col_c.lower() in ("nan", "none") or not current_iso_ctrl_id:
+                    continue
+
+                try:
+                    # Ensure ISO control node exists
+                    iso_key = (ISO_FW, current_iso_ctrl_id)
+                    if iso_key not in seen_controls:
+                        await db.run(
+                            """
+                            MERGE (c:control {control_id: $cid, framework: $fw})
+                            ON CREATE SET c.id           = 'control-iso-' + toString(id(c)),
+                                          c.control_name = $cname,
+                                          c.framework    = $fw,
+                                          c.confidentiality = "Yes",
+                                          c.integrity       = "Yes",
+                                          c.availability    = "Yes",
+                                          c.created_at   = $now,
+                                          c.updated_at   = $now
+                            ON MATCH SET  c.control_name = $cname,
+                                          c.framework    = $fw,
+                                          c.updated_at   = $now
+                            WITH c
+                            MATCH (f:framework {framework_name: $fw})
+                            MERGE (f)-[:owns]->(c)
+                            """,
+                            cid=current_iso_ctrl_id, fw=ISO_FW,
+                            cname=current_iso_ctrl_name, now=now_iso,
+                        )
+                        seen_controls.add(iso_key)
+                        stats["controls"] += 1
+
+                    # Create / merge canonical question node
+                    dkey = f"{current_iso_ctrl_id}||{_norm(col_c)}"
+                    if dkey not in seen_questions:
+                        q_result = await db.run(
+                            """
+                            MERGE (q:question {dedup_key: $key})
+                            ON CREATE SET
+                                q.id             = 'question-' + toString(id(q)),
+                                q.text           = $text,
+                                q.weight         = 1.0,
+                                q.iso_control_id = $iso_ctrl,
+                                q.created_at     = $now,
+                                q.updated_at     = $now
+                            ON MATCH SET q.updated_at = $now
+                            RETURN q.id AS qid
+                            """,
+                            key=dkey, text=col_c,
+                            iso_ctrl=current_iso_ctrl_id, now=now_iso,
+                        )
+                        q_rec = await q_result.single()
+                        q_id = q_rec["qid"] if q_rec else None
+                        if q_id:
+                            seen_questions.add(dkey)
+                            stats["questions"] += 1
+                    else:
+                        q_res2 = await db.run(
+                            "MATCH (q:question {dedup_key: $key}) RETURN q.id AS qid",
+                            key=dkey,
+                        )
+                        q_rec2 = await q_res2.single()
+                        q_id = q_rec2["qid"] if q_rec2 else None
+
+                    if not q_id:
+                        stats["errors"] += 1
+                        errors.append({"row": col_c[:60], "error": "Failed to create question node"})
+                        continue
+
+                    # Link ISO control -> question
+                    await db.run(
+                        """
+                        MATCH (q:question {id: $qid})
+                        MATCH (c:control {control_id: $cid, framework: $fw})
+                        MERGE (c)-[:HAS_QUESTION]->(q)
+                        """,
+                        qid=q_id, cid=current_iso_ctrl_id, fw=ISO_FW,
+                    )
+                    stats["links"] += 1
+
+                    # Process each framework column pair
+                    for fw_name, id_col, nm_col in FRAMEWORK_COLUMNS:
+                        raw_ids  = str(row.get(id_col,  "") or "").strip()
+                        raw_nms  = str(row.get(nm_col,  "") or "").strip()
+
+                        clause_ids = _parse_ids(raw_ids)
+                        if not clause_ids:
+                            continue
+
+                        # Names may be separated by ";" — one name per ID
+                        # e.g. "EGC-D-01: Define...; EAC-B-01: Establish..."
+                        # Strip the leading "ID: " prefix if present, then zip.
+                        raw_nm_parts = [p.strip() for p in raw_nms.split(";") if p.strip()]
+
+                        def _strip_id_prefix(name: str, cid: str) -> str:
+                            """Remove 'EGC-D-01: ' prefix from the name if present."""
+                            prefix = cid + ":"
+                            if name.startswith(prefix):
+                                return name[len(prefix):].strip()
+                            return name
+
+                        clause_names = {}
+                        for i, cid in enumerate(clause_ids):
+                            if i < len(raw_nm_parts):
+                                clause_names[cid] = _strip_id_prefix(raw_nm_parts[i], cid)
+                            else:
+                                clause_names[cid] = ""
+
+                        for clause_id in clause_ids:
+                            ctrl_name = clause_names.get(clause_id, "")
+                            fw_key = (fw_name, clause_id)
+                            if fw_key not in seen_controls:
+                                await db.run(
+                                    """
+                                    MERGE (c:control {control_id: $cid, framework: $fw})
+                                    ON CREATE SET c.id           = 'control-' + $fw_slug + '-' + toString(id(c)),
+                                                  c.control_name = $cname,
+                                                  c.framework    = $fw,
+                                                  c.confidentiality = "Yes",
+                                                  c.integrity       = "Yes",
+                                                  c.availability    = "Yes",
+                                                  c.created_at   = $now,
+                                                  c.updated_at   = $now
+                                    ON MATCH SET  c.control_name = $cname,
+                                                  c.framework    = $fw,
+                                                  c.updated_at   = $now
+                                    WITH c
+                                    MATCH (f:framework {framework_name: $fw})
+                                    MERGE (f)-[:owns]->(c)
+                                    """,
+                                    cid=clause_id, fw=fw_name,
+                                    cname=ctrl_name,
+                                    fw_slug=re.sub(r"[^a-z0-9]", "-", fw_name.lower()),
+                                    now=now_iso,
+                                )
+                                seen_controls.add(fw_key)
+                                stats["controls"] += 1
+
+                            # Link framework control -> question
+                            await db.run(
+                                """
+                                MATCH (q:question {id: $qid})
+                                MATCH (c:control {control_id: $cid, framework: $fw})
+                                MERGE (c)-[:HAS_QUESTION]->(q)
+                                """,
+                                qid=q_id, cid=clause_id, fw=fw_name,
+                            )
+                            stats["links"] += 1
+
+                except Exception as row_err:
+                    stats["errors"] += 1
+                    errors.append({"row": col_c[:60], "error": str(row_err)})
+
+            return {
+                "created_count": stats["questions"],
+                "failed_count":  stats["errors"],
+                "created_ids":   [],
+                "errors":        errors,
+                "summary": {
+                    "questions_upserted": stats["questions"],
+                    "controls_upserted":  stats["controls"],
+                    "has_question_links": stats["links"],
+                }
+            }
+
+        elif doctype == "control_question":
             controls_data = {}
             for index, row in df.iterrows():
                 control = str(row.get("Control", "")).strip()
