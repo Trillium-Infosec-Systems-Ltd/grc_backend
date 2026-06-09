@@ -804,11 +804,22 @@ class GenericCRUD:
                 if record:
                     node = dict(record["n"])
                     control_ids = record.get("control_ids", [])
+                    controls = record.get("controls", [])
                     # Format for frontend: control_id = comma-separated string
                     node["control_id"] = ", ".join(control_ids) if control_ids else ""
+                    
+                    # Build relationships array with control database IDs
+                    relationships = []
+                    for control in controls:
+                        relationships.append({
+                            "direction": "incoming",
+                            "type": "HAS_QUESTION",
+                            "node": dict(control)
+                        })
+                    
                     return {
                         "node": node,
-                        "relationships": []
+                        "relationships": relationships
                     }
                 return None
         

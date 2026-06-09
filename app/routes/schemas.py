@@ -275,12 +275,18 @@ async def get_schema(
         elif fieldname == "attached_files":
             field["default_value"] = sanitize_for_json(_attached_file_objects(doc_data.get(fieldname, [])))
         elif fieldname == "control_id" and actual_schema_name == "control_question":
-            # Convert comma-separated string to array for schema default value
-            control_id_str = doc_data.get("control_id", "")
-            if control_id_str:
-                field["default_value"] = [c.strip() for c in control_id_str.split(",") if c.strip()]
-            else:
-                field["default_value"] = []
+            # Use database IDs from relationships for schema default value
+            control_db_ids = []
+            print(f"DEBUG: Relationships found: {len(relationships)}")
+            for rel in relationships:
+                print(f"DEBUG: Rel type: {rel.get('type')}, direction: {rel.get('direction')}")
+                if rel.get("type") == "HAS_QUESTION" and rel.get("direction") == "incoming":
+                    control_node = rel.get("node")
+                    if control_node and control_node.get("id"):
+                        control_db_ids.append(control_node.get("id"))
+                        print(f"DEBUG: Added control ID: {control_node.get('id')}")
+            print(f"DEBUG: Final control_db_ids: {control_db_ids}")
+            field["default_value"] = control_db_ids
         elif fieldname == "description" and actual_schema_name == "control_question":
             field["default_value"] = doc_data.get("description", "")
         elif fieldname == "question" and actual_schema_name == "control_question":
