@@ -1494,6 +1494,7 @@ class GenericCRUD:
         """
         text = data.get("text", "").strip()
         weight = float(data.get("weight", 1) or 1)
+        description = data.get("description", "").strip()
         
         # Parse control_id (accept list or comma-separated string)
         control_id_raw = data.get("control_id", [])
@@ -1508,9 +1509,9 @@ class GenericCRUD:
         await self.session.run(
             """
             MATCH (q:question {id: $item_id})
-            SET q.text = $text, q.weight = $weight, q.updated_at = $now
+            SET q.text = $text, q.weight = $weight, q.description = $desc, q.updated_at = $now
             """,
-            item_id=item_id, text=text, weight=weight, now=now
+            item_id=item_id, text=text, weight=weight, desc=description, now=now
         )
         
         # Delete existing HAS_QUESTION relationships
@@ -1544,10 +1545,11 @@ class GenericCRUD:
     async def _create_canonical_question(self, data: dict):
         """
         Create new canonical question node with control relationships.
-        data: {text: str, control_id: list|str, weight: number}
+        data: {text: str, control_id: list|str, weight: number, description: str}
         """
         text = data.get("text", "").strip()
         weight = float(data.get("weight", 1) or 1)
+        description = data.get("description", "").strip()
         
         # Parse control_id (accept list or comma-separated string)
         control_id_raw = data.get("control_id", [])
@@ -1585,13 +1587,14 @@ class GenericCRUD:
                 id: $qid,
                 text: $text,
                 weight: $weight,
+                description: $desc,
                 iso_control_id: $iso_cid,
                 dedup_key: $dkey,
                 created_at: $now,
                 updated_at: $now
             })
             """,
-            qid=question_id, text=text, weight=weight, 
+            qid=question_id, text=text, weight=weight, desc=description,
             iso_cid=iso_control_id, dkey=dedup_key, now=now
         )
         

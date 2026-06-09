@@ -276,6 +276,8 @@ async def get_schema(
             field["default_value"] = sanitize_for_json(_attached_file_objects(doc_data.get(fieldname, [])))
         elif fieldname == "control_id" and actual_schema_name == "control_question":
             field["default_value"] = doc_data.get("control_id", [])
+        elif fieldname == "description" and actual_schema_name == "control_question":
+            field["default_value"] = doc_data.get("description", "")
         elif fieldname == "question" and actual_schema_name == "control_question":
             # For canonical questions, map text field to question field
             field["default_value"] = doc_data.get("text", "")
