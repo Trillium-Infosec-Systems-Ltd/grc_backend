@@ -509,6 +509,10 @@ class GenericCRUD:
             where_clauses.append("(n.is_deleted IS NULL OR n.is_deleted = 'false')")
 
         filterable_fields = {f["fieldname"]: f for f in self.schema["fields"] if f.get("is_filter")}
+        
+        # Separate Link filters (need MATCH) from regular filters (can use WHERE)
+        link_match_clauses = []
+        
         for i, (key, value) in enumerate(filters.items()):
             if key not in filterable_fields:
                 continue  # only allow fields marked as is_filter
@@ -529,6 +533,27 @@ class GenericCRUD:
                     where_clauses.append(f"n.{key} = ${param_key}")
                 except ValueError:
                     where_clauses.append(f"toLower(toString(n.{key})) CONTAINS toLower(${param_key})")
+
+            elif fieldtype == "Link":
+                # For Link fields, add to MATCH clause for relationship-based filtering
+                rel_type = field_info.get("relationship_type", "")
+                rel_direction = field_info.get("relationship_direction", "outgoing")
+                link_to = field_info.get("link_to", key)
+                
+                if rel_type:
+                    # Build relationship pattern for MATCH clause
+                    if rel_direction == "incoming":
+                        # (:target {id: $val})-[:REL]->(n)
+                        link_match_clauses.append(f"(:{link_to} {{id: ${param_key}}})-[:{rel_type}]->(n)")
+                    else:
+                        # (n)-[:REL]->(:target {id: $val})
+                        link_match_clauses.append(f"(n)-[:{rel_type}]->(:{link_to} {{id: ${param_key}}})")
+                    params[param_key] = value
+                    continue
+                else:
+                    # Fallback: simple property match in WHERE
+                    where_clauses.append(f"n.{key} = ${param_key}")
+                    params[param_key] = value
 
             elif fieldtype == "MultiLink":
                 # For MultiLink fields (stored as arrays), check if any filter value is in the array
@@ -576,12 +601,21 @@ class GenericCRUD:
 
             params[param_key] = value
 
+        # Build WHERE clause (excluding Link filters which are in MATCH)
         where_str = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
-        print(f"[get_all] doctype={self.doctype}, where_str={where_str}, params={params}")
+        
+        # Build additional MATCH clauses for Link filters
+        link_match_str = ""
+        if link_match_clauses:
+            link_match_str = "\n        " + "\n        ".join(f"MATCH {clause}" for clause in link_match_clauses)
+        
+        print(f"[get_all] doctype={self.doctype}, link_match={link_match_str}, where={where_str}, params={params}")
 
         # Get total count
+        count_label = "question" if self.doctype == "control_question" else self.doctype
         count_query = f"""
-        MATCH (n:{self.doctype})
+        MATCH (n:{count_label})
+        {link_match_str}
         {where_str}
         RETURN count(n) AS total
         """
@@ -610,6 +644,7 @@ class GenericCRUD:
         if self.doctype == "control":
             data_query = f"""
             MATCH (n:control)
+            {link_match_str}
             {where_str}
             OPTIONAL MATCH (source)-[r1]->(n)
             WITH n, collect(DISTINCT {{
@@ -632,6 +667,7 @@ class GenericCRUD:
             # Fetch canonical questions with attached controls for frontend display
             data_query = f"""
             MATCH (n:question)
+            {link_match_str}
             {where_str}
             OPTIONAL MATCH (c:control)-[:HAS_QUESTION]->(n)
             WITH n, collect(DISTINCT c.control_id) AS control_ids, collect(DISTINCT c) AS controls
@@ -643,6 +679,7 @@ class GenericCRUD:
         else:
             data_query = f"""
             MATCH (n:{self.doctype})
+            {link_match_str}
             {where_str}
             OPTIONAL MATCH (source)-[r1]->(n)
             WITH n, collect(DISTINCT {{

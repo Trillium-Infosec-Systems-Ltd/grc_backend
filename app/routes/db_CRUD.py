@@ -1143,7 +1143,8 @@ async def get_all_items(
                 normalized_filters[clean_key] = [existing, value]
         else:
             normalized_filters[clean_key] = value
-    filters = normalized_filters
+    # Remove empty string filters to avoid spurious WHERE clauses
+    filters = {k: v for k, v in normalized_filters.items() if v is not None and v != ""}
     print(f"[get_all_items] doctype={doctype}, filters={filters}")
 
     crud = GenericCRUD(db, doctype)
@@ -1159,7 +1160,11 @@ async def get_all_items(
 
         return sanitize_for_json(paginated_data)
 
+    except HTTPException:
+        raise
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/data/{doctype}/{item_id}")
