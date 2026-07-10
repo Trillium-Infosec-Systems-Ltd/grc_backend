@@ -102,12 +102,6 @@ def _normalize_file_list(value):
     return [single] if single else []
 
 
-def _file_objects(value):
-    """Return attached files as [{name, url}] objects (name = basename only)."""
-    urls = _normalize_file_list(value)
-    return [{"name": os.path.basename(url), "url": url} for url in urls]
-
-
 class GenericCRUD:
     def __init__(self, session: AsyncSession, doctype: str, current_user: dict = None   ):
         self.session = session
@@ -778,7 +772,7 @@ class GenericCRUD:
                         assessment = assessment_record["a"]
                         node["rating"] = assessment.get("control_rating", "Low")
                         node["compliance_status"] = assessment.get("control_compliance", "Non Compliant")
-                        node["attached_files"] = _file_objects(assessment.get("attached_files", []))
+                        node["attached_files"] = [os.path.basename(url) for url in _normalize_file_list(assessment.get("attached_files", []))]
                         control_assesment_flag = True
 
             for field in self.schema["fields"]:

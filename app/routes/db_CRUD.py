@@ -413,7 +413,7 @@ async def get_complaince_data(
                 "remarks": assessment.get("remarks", ""),
                 "observation": assessment.get("observation", ""),
                 "reference_evidence": assessment.get("reference_evidence", ""),
-                "attached_files": _evidence_file_objects(assessment.get("attached_files", [])),
+                "attached_files": [os.path.basename(url) for url in _normalize_evidence_paths(assessment.get("attached_files", []))],
                 "next_review_date": assessment.get("next_review_date", ""),
                 "updated_at": assessment.get("updated_at") or control.get("updated_at"),
                 "created_at": control.get("created_at")
@@ -483,7 +483,7 @@ async def get_complaince_item(
             "remarks": assessment.get("remarks", ""),
             "observation": assessment.get("observation", ""),
             "reference_evidence": assessment.get("reference_evidence", ""),
-            "attached_files": _normalize_evidence_paths(assessment.get("attached_files", [])),
+            "attached_files": [os.path.basename(url) for url in _normalize_evidence_paths(assessment.get("attached_files", []))],
             "next_review_date": assessment.get("next_review_date", ""),
             "updated_at": assessment.get("updated_at") or control.get("updated_at"),
             "created_at": control.get("created_at")
