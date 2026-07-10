@@ -13,6 +13,7 @@ from services.database import get_db
 import json
 from fastapi.responses import JSONResponse
 
+import os
 import re as _re
 
 
@@ -99,6 +100,12 @@ def _normalize_file_list(value):
         return [part.strip() for part in text.split(",") if part.strip()]
     single = _extract_url(value)
     return [single] if single else []
+
+
+def _file_objects(value):
+    """Return attached files as [{name, url}] objects (name = basename only)."""
+    urls = _normalize_file_list(value)
+    return [{"name": os.path.basename(url), "url": url} for url in urls]
 
 
 class GenericCRUD:
@@ -771,7 +778,7 @@ class GenericCRUD:
                         assessment = assessment_record["a"]
                         node["rating"] = assessment.get("control_rating", "Low")
                         node["compliance_status"] = assessment.get("control_compliance", "Non Compliant")
-                        node["attached_files"] = _normalize_file_list(assessment.get("attached_files", []))
+                        node["attached_files"] = _file_objects(assessment.get("attached_files", []))
                         control_assesment_flag = True
 
             for field in self.schema["fields"]:
