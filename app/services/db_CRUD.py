@@ -21,6 +21,20 @@ def _normalize_question_text(text: str) -> str:
     return _re.sub(r"\s+", " ", str(text or "").strip().lower())
 
 
+def control_order_clause(alias: str = "n") -> str:
+    """Return a Cypher ORDER BY clause that naturally sorts control IDs.
+
+    Handles both ISO 27002 style (5.1, 5.2, 5.10) and ISO 27001 style
+    (A.5.1, A.5.2, A.5.10) IDs so the minor number is ordered numerically.
+    """
+    cid = f"toString({alias}.control_id)"
+    return f"""ORDER BY
+        CASE WHEN {cid} =~ '^[A-Za-z].*' THEN left({cid}, 1) ELSE '' END ASC,
+        coalesce(toInteger(CASE WHEN {cid} =~ '^[A-Za-z].*' THEN split({cid}, '.')[1] ELSE split({cid}, '.')[0] END), 0) ASC,
+        coalesce(toInteger(CASE WHEN {cid} =~ '^[A-Za-z].*' AND size(split({cid}, '.')) > 2 THEN split({cid}, '.')[2] WHEN NOT ({cid} =~ '^[A-Za-z].*') AND size(split({cid}, '.')) > 1 THEN split({cid}, '.')[1] ELSE '0' END), 0) ASC,
+        coalesce(toInteger(CASE WHEN {cid} =~ '^[A-Za-z].*' AND size(split({cid}, '.')) > 3 THEN split({cid}, '.')[3] WHEN NOT ({cid} =~ '^[A-Za-z].*') AND size(split({cid}, '.')) > 2 THEN split({cid}, '.')[2] ELSE '0' END), 0) ASC"""
+
+
 def _derive_compliance(answered: int, total: int, weighted_yes: float, weighted_total: float) -> str:
     """
     Compute a control's compliance status from its question responses.
@@ -624,12 +638,8 @@ class GenericCRUD:
 
         # ✅ Order by control_id if doctype is 'control' - handle version-style IDs like 5.1, 5.10
         if self.doctype == "control":
-            # Split control_id by '.' and sort numerically (e.g., 5.1, 5.2, ..., 5.10)
-            order_clause = """ORDER BY 
-                toInteger(split(toString(n.control_id), '.')[0]) ASC,
-                CASE WHEN size(split(toString(n.control_id), '.')) > 1 
-                     THEN toInteger(split(toString(n.control_id), '.')[1]) 
-                     ELSE 0 END ASC"""
+            # Natural sort: supports ISO 27002 (5.1, 5.10) and ISO 27001 (A.5.1, A.5.10)
+            order_clause = control_order_clause("n")
         elif self.doctype == "control_question":
             # control_question uses 'control' field, not 'control_id'
             order_clause = """ORDER BY 

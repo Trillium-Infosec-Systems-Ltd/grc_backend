@@ -1,5 +1,6 @@
 from neo4j import AsyncSession
 from services.schema_loader import load_schema
+from services.db_CRUD import control_order_clause
 import uuid
 from neo4j import AsyncDriver
 import json
@@ -126,11 +127,7 @@ async def get_link_options_service(
     
         # Add sorting for controls to handle version-style IDs (5.1, 5.2, ..., 5.10)
         if document_type == "control":
-            order_clause = """ORDER BY 
-                toInteger(split(toString(n.control_id), '.')[0]) ASC,
-                CASE WHEN size(split(toString(n.control_id), '.')) > 1 
-                     THEN toInteger(split(toString(n.control_id), '.')[1]) 
-                     ELSE 0 END ASC"""
+            order_clause = control_order_clause("n")
         elif document_type == "control_question":
             order_clause = """ORDER BY 
                 toInteger(split(toString(n.control), '.')[0]) ASC,
