@@ -733,40 +733,58 @@ async def bulk_upload_nodes(
                 raw = str(raw or "").strip()
                 if not raw or raw.lower() in ("nan", "none", ""):
                     return []
-                return [p.strip() for p in raw.split(",") if p.strip()]
+                # IDs may be separated by comma or semicolon
+                return [p.strip() for p in re.split(r"[,;]", raw) if p.strip()]
 
-            def _extract_clause_descriptions(raw_desc, clause_ids):
+            def _map_names_by_ids(raw_nms, clause_ids):
                 """
-                Extract description for each clause_id from a combined description string.
-                Handles '7.3: name', '13.8. name', and '13.7 .name' style separators.
-                """
-                if not raw_desc:
-                    return {cid: "" for cid in clause_ids}
+                Map each control id to its name from a free-form name string.
 
-                # Match longest IDs first so '13.10' wins over '13.1'
-                sorted_ids = sorted(clause_ids, key=len, reverse=True)
+                The name string may embed the id before each name using either
+                ':' or '.' (optionally surrounded by spaces) as the id-name
+                separator, and may delimit entries with ';' or '.'. Examples:
+                    "7.3: Perform OS Patch Management; 7.4: Perform App Patching"
+                    "13.7 .Deploy HIPS. 13.8. Deploy NIPS. 13.10. App Filtering"
+
+                We use the known clause_ids to locate each id token in the
+                string and slice out the text between consecutive ids as the
+                name. This is robust to mixed ':'/'.'/';' separators.
+                """
+                names = {cid: "" for cid in clause_ids}
+                raw_nms = str(raw_nms or "").strip()
+                if not raw_nms or not clause_ids:
+                    return names
+
+                # Locate each id as a standalone token (not part of a longer
+                # number, e.g. don't match "13.1" inside "13.10").
                 positions = []
+                for cid in clause_ids:
+                    pattern = re.compile(r"(?<![\d.])" + re.escape(cid) + r"(?![\d])")
+                    m = pattern.search(raw_nms)
+                    if m:
+                        positions.append((m.start(), m.end(), cid))
 
-                for cid in sorted_ids:
-                    # id as whole token, optionally followed by ':' or '.' and whitespace
-                    pattern = rf"(?<!\S){re.escape(cid)}\s*[:\.]?\s*"
-                    for m in re.finditer(pattern, raw_desc):
-                        overlap = any(m.start() < end and m.end() > start for start, end, _ in positions)
-                        if not overlap:
-                            positions.append((m.start(), m.end(), cid))
+                if not positions:
+                    # Fallback: split by ';' and zip by index, stripping prefixes
+                    parts = [p.strip() for p in raw_nms.split(";") if p.strip()]
+                    for i, cid in enumerate(clause_ids):
+                        if i < len(parts):
+                            seg = parts[i]
+                            for sep in (cid + ":", cid + ".", cid):
+                                if seg.startswith(sep):
+                                    seg = seg[len(sep):]
+                                    break
+                            names[cid] = seg.strip().lstrip(":.;").strip()
+                    return names
 
                 positions.sort()
-                desc_map = {}
-                for i, (start, end, cid) in enumerate(positions):
-                    next_start = positions[i + 1][0] if i + 1 < len(positions) else len(raw_desc)
-                    desc = raw_desc[end:next_start].strip()
-                    desc = re.sub(r"^[:\.\s]+", "", desc)      # remove leading separator chars
-                    desc = re.sub(r"[;\s]+$", "", desc)         # remove trailing semicolons/whitespace
-                    desc_map[cid] = desc
-
-                for cid in clause_ids:
-                    desc_map.setdefault(cid, "")
-                return desc_map
+                for idx, (start, end, cid) in enumerate(positions):
+                    next_start = positions[idx + 1][0] if idx + 1 < len(positions) else len(raw_nms)
+                    segment = raw_nms[end:next_start]
+                    # Strip the id-name separator (':' or '.') and surrounding punctuation
+                    segment = segment.strip().lstrip(":.;").strip().rstrip(";").strip()
+                    names[cid] = segment
+                return names
 
             stats = {"questions": 0, "controls": 0, "links": 0, "errors": 0}
             seen_controls: set = set()   # (fw_name, ctrl_id_val)
@@ -887,10 +905,10 @@ async def bulk_upload_nodes(
                         if not clause_ids:
                             continue
 
-                        # Extract clause names from the combined description cell.
-                        # Handles entries separated by ';', '.', or ':' e.g.
-                        #   "7.3: name; 13.8. name; 13.7 .name"
-                        clause_names = _extract_clause_descriptions(raw_nms, clause_ids)
+                        # Map each clause id to its name. Handles mixed
+                        # ':'/'.'/';' separators between id and name and
+                        # between entries (e.g. "7.3: Foo; 13.7 .Bar. 13.8. Baz").
+                        clause_names = _map_names_by_ids(raw_nms, clause_ids)
 
                         for clause_id in clause_ids:
                             ctrl_name = clause_names.get(clause_id, "")
