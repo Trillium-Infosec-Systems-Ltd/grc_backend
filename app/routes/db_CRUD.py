@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, UploadFile,File,Req
 from fastapi.responses import FileResponse, StreamingResponse
 from neo4j import AsyncSession
 from services.dependencies import get_current_user
-from services.db_CRUD import GenericCRUD, control_order_clause
+from services.db_CRUD import GenericCRUD
 from services.schema_loader import load_schema
 
 
@@ -310,8 +310,8 @@ async def _resolve_export_link_values(
 @router.get("/data/complaince")
 async def get_complaince_data(
     request: Request,
-    skip: str = Query("0"),
-    limit: str = Query("10"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -319,21 +319,6 @@ async def get_complaince_data(
     Get compliance data - controls merged with control_assessment for the current organization.
     This is a virtual view that combines control and control_assessment data.
     """
-    # Sanitize skip/limit - frontend may send invalid values like "NaN"
-    try:
-        skip = int(float(skip))
-        if skip < 0:
-            skip = 0
-    except (ValueError, TypeError):
-        skip = 0
-    try:
-        limit = int(float(limit))
-        if limit < 1:
-            limit = 10
-        limit = min(limit, 100)
-    except (ValueError, TypeError):
-        limit = 10
-
     filters = dict(request.query_params)
     filters.pop("skip", None)
     filters.pop("limit", None)
@@ -350,25 +335,8 @@ async def get_complaince_data(
 
         # Handle filters
         filter_idx = 0
-        framework_filter_value = None
-        framework_param_key = None
         for key, value in filters.items():
-            if key == "framework":
-                # Frontend sends the framework's database id (e.g. "framework-cis-v8"),
-                # but legacy controls may only have a plain framework name/id string
-                # property (no :owns relationship). Match on relationship OR
-                # direct id/name string, same as /dashboard/compliance.
-                param_key = f"filter_{filter_idx}"
-                framework_filter_value = str(value)
-                framework_param_key = param_key
-                where_clauses.append(
-                    f"(f.id = ${param_key} "
-                    f"OR toLower(trim(toString(c.framework))) = toLower(trim(${param_key})) "
-                    f"OR (target_fw IS NOT NULL AND toLower(trim(toString(c.framework))) = toLower(trim(target_fw.framework_name))))"
-                )
-                params[param_key] = str(value)
-                filter_idx += 1
-            elif key in ["control_id", "control_name", "category"]:
+            if key in ["control_id", "control_name", "category", "framework"]:
                 param_key = f"filter_{filter_idx}"
                 if key == "control_id":
                     where_clauses.append(f"toString(c.{key}) = ${param_key}")
@@ -389,13 +357,11 @@ async def get_complaince_data(
         filter_str = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
 
         # Count query
-        target_fw_match = f"OPTIONAL MATCH (target_fw:framework {{id: ${framework_param_key}}})" if framework_param_key else "OPTIONAL MATCH (target_fw:framework) WHERE false"
         count_query = f"""
         MATCH (c:control)
         OPTIONAL MATCH (ca:control_assessment {{control_id: c.control_id, organization_id: $org_id}})
         OPTIONAL MATCH (f:framework)-[:owns]->(c)
-        {target_fw_match}
-        WITH c, ca, f, target_fw, coalesce(f.framework_name, c.framework) AS framework_name
+        WITH c, ca, coalesce(f.framework_name, c.framework) AS framework_name
         {filter_str}
         RETURN count(c) AS total
         """
@@ -408,8 +374,7 @@ async def get_complaince_data(
         MATCH (c:control)
         OPTIONAL MATCH (ca:control_assessment {{control_id: c.control_id, organization_id: $org_id}})
         OPTIONAL MATCH (f:framework)-[:owns]->(c)
-        {target_fw_match}
-        WITH c, ca, f, target_fw, coalesce(f.framework_name, c.framework) AS framework_name
+        WITH c, ca, coalesce(f.framework_name, c.framework) AS framework_name
         {filter_str}
         RETURN c, ca, framework_name
         ORDER BY
@@ -448,7 +413,7 @@ async def get_complaince_data(
                 "remarks": assessment.get("remarks", ""),
                 "observation": assessment.get("observation", ""),
                 "reference_evidence": assessment.get("reference_evidence", ""),
-                "attached_files": [os.path.basename(url) for url in _normalize_evidence_paths(assessment.get("attached_files", []))],
+                "attached_files": _normalize_evidence_paths(assessment.get("attached_files", [])),
                 "next_review_date": assessment.get("next_review_date", ""),
                 "updated_at": assessment.get("updated_at") or control.get("updated_at"),
                 "created_at": control.get("created_at")
@@ -518,7 +483,7 @@ async def get_complaince_item(
             "remarks": assessment.get("remarks", ""),
             "observation": assessment.get("observation", ""),
             "reference_evidence": assessment.get("reference_evidence", ""),
-            "attached_files": [os.path.basename(url) for url in _normalize_evidence_paths(assessment.get("attached_files", []))],
+            "attached_files": _normalize_evidence_paths(assessment.get("attached_files", [])),
             "next_review_date": assessment.get("next_review_date", ""),
             "updated_at": assessment.get("updated_at") or control.get("updated_at"),
             "created_at": control.get("created_at")
@@ -1077,19 +1042,23 @@ async def export_framework_controls_data(
     selected_framework_id = requested_framework if requested_framework in framework_ids else frameworks[0]["id"]
     selected_framework = next(item for item in frameworks if item["id"] == selected_framework_id)
 
-    controls_query = f"""
+    controls_query = """
     MATCH (c:control)
     WHERE
-        EXISTS {{
-            MATCH (f:framework {{id: $framework_id}})-[:owns]->(c)
-        }}
+        EXISTS {
+            MATCH (f:framework {id: $framework_id})-[:owns]->(c)
+        }
         OR toLower(trim(toString(c.framework))) = toLower(trim($framework_id))
         OR toLower(trim(toString(c.framework))) = toLower(trim($framework_name))
-    OPTIONAL MATCH (ca:control_assessment {{control_id: c.control_id, organization_id: $org_id}})
+    OPTIONAL MATCH (ca:control_assessment {control_id: c.control_id, organization_id: $org_id})
     RETURN c,
            coalesce(ca.control_compliance, 'Non Compliant') AS compliance_status,
            coalesce(ca.control_rating, 'Low') AS rating
-    {control_order_clause("c")}
+    ORDER BY
+        toInteger(split(toString(c.control_id), '.')[0]) ASC,
+        CASE WHEN size(split(toString(c.control_id), '.')) > 1
+             THEN toInteger(split(toString(c.control_id), '.')[1])
+             ELSE 0 END ASC
     """
     controls_result = await db.run(
         controls_query,

@@ -289,18 +289,7 @@ async def get_asset_summary(
 
     # import pdb;pdb.set_trace()
 
-    if not record["threat_id"]:
-        # Asset has no linked control/threat chain - return safe defaults instead
-        # of letting compute_threat_info raise a masking 404
-        calculated_risk = {
-            "likelihood": None,
-            "ease_of_exploitation": None,
-            "vulnerabilities": None,
-            "control_id": record["security_control_id"],
-            "risk": "Unknown",
-        }
-    else:
-        calculated_risk = await compute_threat_info(record["threat_id"], record["asset_value"], db)
+    calculated_risk = await compute_threat_info(record["threat_id"], record["asset_value"], db)
 
     response = {
         "type": record["asset_type"],
@@ -734,17 +723,7 @@ async def bulk_upload_nodes(
                 for i, (fw, id_col, nm_col) in enumerate(FRAMEWORK_COLUMNS)
             ]
 
-            # Detect ISO framework from first column header (e.g. "ISO27002", "ISO 27001")
-            first_col = raw_cols[0] if raw_cols else ""
-            if first_col.upper().startswith("ISO"):
-                # Normalize: "ISO27002" -> "ISO 27002", "ISO 27001" stays as is
-                iso_match = re.match(r"(ISO)\s*(\d+)", first_col, re.IGNORECASE)
-                if iso_match:
-                    ISO_FW = f"ISO {iso_match.group(2)}"
-                else:
-                    ISO_FW = first_col
-            else:
-                ISO_FW = "ISO 27001"
+            ISO_FW = "ISO 27001"
             now_iso = datetime.utcnow().isoformat()
 
             def _norm(text):
