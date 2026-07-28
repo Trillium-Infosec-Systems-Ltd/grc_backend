@@ -723,7 +723,16 @@ async def bulk_upload_nodes(
                 for i, (fw, id_col, nm_col) in enumerate(FRAMEWORK_COLUMNS)
             ]
 
-            ISO_FW = "ISO 27001"
+            # Derive the ISO framework name from the sheet header when present.
+            # New format headers look like "ISO 27002" / "ISO 27002 control";
+            # old format uses generic "Control ID" / "Control" — fall back then.
+            _iso_header = str(col_control_id or "").strip()
+            if re.match(r"(?i)^ISO\b", _iso_header):
+                # Strip a trailing "control" word (e.g. "ISO 27002 control")
+                ISO_FW = re.sub(r"(?i)\s*control\s*$", "", _iso_header).strip()
+            else:
+                ISO_FW = "ISO 27001"
+            print(f"[bulk_upload] Using ISO framework name: {ISO_FW}")
             now_iso = datetime.utcnow().isoformat()
 
             def _norm(text):
