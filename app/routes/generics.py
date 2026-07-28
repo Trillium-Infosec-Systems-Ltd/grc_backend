@@ -735,6 +735,39 @@ async def bulk_upload_nodes(
                     return []
                 return [p.strip() for p in raw.split(",") if p.strip()]
 
+            def _extract_clause_descriptions(raw_desc, clause_ids):
+                """
+                Extract description for each clause_id from a combined description string.
+                Handles '7.3: name', '13.8. name', and '13.7 .name' style separators.
+                """
+                if not raw_desc:
+                    return {cid: "" for cid in clause_ids}
+
+                # Match longest IDs first so '13.10' wins over '13.1'
+                sorted_ids = sorted(clause_ids, key=len, reverse=True)
+                positions = []
+
+                for cid in sorted_ids:
+                    # id as whole token, optionally followed by ':' or '.' and whitespace
+                    pattern = rf"(?<!\S){re.escape(cid)}\s*[:\.]?\s*"
+                    for m in re.finditer(pattern, raw_desc):
+                        overlap = any(m.start() < end and m.end() > start for start, end, _ in positions)
+                        if not overlap:
+                            positions.append((m.start(), m.end(), cid))
+
+                positions.sort()
+                desc_map = {}
+                for i, (start, end, cid) in enumerate(positions):
+                    next_start = positions[i + 1][0] if i + 1 < len(positions) else len(raw_desc)
+                    desc = raw_desc[end:next_start].strip()
+                    desc = re.sub(r"^[:\.\s]+", "", desc)      # remove leading separator chars
+                    desc = re.sub(r"[;\s]+$", "", desc)         # remove trailing semicolons/whitespace
+                    desc_map[cid] = desc
+
+                for cid in clause_ids:
+                    desc_map.setdefault(cid, "")
+                return desc_map
+
             stats = {"questions": 0, "controls": 0, "links": 0, "errors": 0}
             seen_controls: set = set()   # (fw_name, ctrl_id_val)
             seen_questions: set = set()  # dedup_key
@@ -854,24 +887,10 @@ async def bulk_upload_nodes(
                         if not clause_ids:
                             continue
 
-                        # Names may be separated by ";" — one name per ID
-                        # e.g. "EGC-D-01: Define...; EAC-B-01: Establish..."
-                        # Strip the leading "ID: " prefix if present, then zip.
-                        raw_nm_parts = [p.strip() for p in raw_nms.split(";") if p.strip()]
-
-                        def _strip_id_prefix(name: str, cid: str) -> str:
-                            """Remove 'EGC-D-01: ' prefix from the name if present."""
-                            prefix = cid + ":"
-                            if name.startswith(prefix):
-                                return name[len(prefix):].strip()
-                            return name
-
-                        clause_names = {}
-                        for i, cid in enumerate(clause_ids):
-                            if i < len(raw_nm_parts):
-                                clause_names[cid] = _strip_id_prefix(raw_nm_parts[i], cid)
-                            else:
-                                clause_names[cid] = ""
+                        # Extract clause names from the combined description cell.
+                        # Handles entries separated by ';', '.', or ':' e.g.
+                        #   "7.3: name; 13.8. name; 13.7 .name"
+                        clause_names = _extract_clause_descriptions(raw_nms, clause_ids)
 
                         for clause_id in clause_ids:
                             ctrl_name = clause_names.get(clause_id, "")
