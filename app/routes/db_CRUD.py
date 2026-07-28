@@ -310,8 +310,8 @@ async def _resolve_export_link_values(
 @router.get("/data/complaince")
 async def get_complaince_data(
     request: Request,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(10, ge=1, le=100),
+    skip: str = Query("0"),
+    limit: str = Query("10"),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -319,6 +319,21 @@ async def get_complaince_data(
     Get compliance data - controls merged with control_assessment for the current organization.
     This is a virtual view that combines control and control_assessment data.
     """
+    # Sanitize skip/limit - frontend may send invalid values like "NaN"
+    try:
+        skip = int(float(skip))
+        if skip < 0:
+            skip = 0
+    except (ValueError, TypeError):
+        skip = 0
+    try:
+        limit = int(float(limit))
+        if limit < 1:
+            limit = 10
+        limit = min(limit, 100)
+    except (ValueError, TypeError):
+        limit = 10
+
     filters = dict(request.query_params)
     filters.pop("skip", None)
     filters.pop("limit", None)
