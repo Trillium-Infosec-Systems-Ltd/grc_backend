@@ -289,7 +289,18 @@ async def get_asset_summary(
 
     # import pdb;pdb.set_trace()
 
-    calculated_risk = await compute_threat_info(record["threat_id"], record["asset_value"], db)
+    if not record["threat_id"]:
+        # Asset has no linked control/threat chain - return safe defaults instead
+        # of letting compute_threat_info raise a masking 404
+        calculated_risk = {
+            "likelihood": None,
+            "ease_of_exploitation": None,
+            "vulnerabilities": None,
+            "control_id": record["security_control_id"],
+            "risk": "Unknown",
+        }
+    else:
+        calculated_risk = await compute_threat_info(record["threat_id"], record["asset_value"], db)
 
     response = {
         "type": record["asset_type"],
