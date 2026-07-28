@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, UploadFile,File,Req
 from fastapi.responses import FileResponse, StreamingResponse
 from neo4j import AsyncSession
 from services.dependencies import get_current_user
-from services.db_CRUD import GenericCRUD
+from services.db_CRUD import GenericCRUD, control_order_clause
 from services.schema_loader import load_schema
 
 
@@ -419,7 +419,7 @@ async def get_complaince_data(
                 "remarks": assessment.get("remarks", ""),
                 "observation": assessment.get("observation", ""),
                 "reference_evidence": assessment.get("reference_evidence", ""),
-                "attached_files": _normalize_evidence_paths(assessment.get("attached_files", [])),
+                "attached_files": [os.path.basename(url) for url in _normalize_evidence_paths(assessment.get("attached_files", []))],
                 "next_review_date": assessment.get("next_review_date", ""),
                 "updated_at": assessment.get("updated_at") or control.get("updated_at"),
                 "created_at": control.get("created_at")
@@ -489,7 +489,7 @@ async def get_complaince_item(
             "remarks": assessment.get("remarks", ""),
             "observation": assessment.get("observation", ""),
             "reference_evidence": assessment.get("reference_evidence", ""),
-            "attached_files": _normalize_evidence_paths(assessment.get("attached_files", [])),
+            "attached_files": [os.path.basename(url) for url in _normalize_evidence_paths(assessment.get("attached_files", []))],
             "next_review_date": assessment.get("next_review_date", ""),
             "updated_at": assessment.get("updated_at") or control.get("updated_at"),
             "created_at": control.get("created_at")
@@ -1048,23 +1048,19 @@ async def export_framework_controls_data(
     selected_framework_id = requested_framework if requested_framework in framework_ids else frameworks[0]["id"]
     selected_framework = next(item for item in frameworks if item["id"] == selected_framework_id)
 
-    controls_query = """
+    controls_query = f"""
     MATCH (c:control)
     WHERE
-        EXISTS {
-            MATCH (f:framework {id: $framework_id})-[:owns]->(c)
-        }
+        EXISTS {{
+            MATCH (f:framework {{id: $framework_id}})-[:owns]->(c)
+        }}
         OR toLower(trim(toString(c.framework))) = toLower(trim($framework_id))
         OR toLower(trim(toString(c.framework))) = toLower(trim($framework_name))
-    OPTIONAL MATCH (ca:control_assessment {control_id: c.control_id, organization_id: $org_id})
+    OPTIONAL MATCH (ca:control_assessment {{control_id: c.control_id, organization_id: $org_id}})
     RETURN c,
            coalesce(ca.control_compliance, 'Non Compliant') AS compliance_status,
            coalesce(ca.control_rating, 'Low') AS rating
-    ORDER BY
-        toInteger(split(toString(c.control_id), '.')[0]) ASC,
-        CASE WHEN size(split(toString(c.control_id), '.')) > 1
-             THEN toInteger(split(toString(c.control_id), '.')[1])
-             ELSE 0 END ASC
+    {control_order_clause("c")}
     """
     controls_result = await db.run(
         controls_query,
