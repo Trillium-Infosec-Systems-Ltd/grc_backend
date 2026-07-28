@@ -335,11 +335,22 @@ async def get_complaince_data(
 
         # Handle filters
         filter_idx = 0
+        framework_filter_value = None
+        framework_param_key = None
         for key, value in filters.items():
             if key == "framework":
-                # Frontend sends the framework's database id (e.g. "framework-cis-v8")
+                # Frontend sends the framework's database id (e.g. "framework-cis-v8"),
+                # but legacy controls may only have a plain framework name/id string
+                # property (no :owns relationship). Match on relationship OR
+                # direct id/name string, same as /dashboard/compliance.
                 param_key = f"filter_{filter_idx}"
-                where_clauses.append(f"f.id = ${param_key}")
+                framework_filter_value = str(value)
+                framework_param_key = param_key
+                where_clauses.append(
+                    f"(f.id = ${param_key} "
+                    f"OR toLower(trim(toString(c.framework))) = toLower(trim(${param_key})) "
+                    f"OR (target_fw IS NOT NULL AND toLower(trim(toString(c.framework))) = toLower(trim(target_fw.framework_name))))"
+                )
                 params[param_key] = str(value)
                 filter_idx += 1
             elif key in ["control_id", "control_name", "category"]:
@@ -363,11 +374,13 @@ async def get_complaince_data(
         filter_str = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
 
         # Count query
+        target_fw_match = f"OPTIONAL MATCH (target_fw:framework {{id: ${framework_param_key}}})" if framework_param_key else "OPTIONAL MATCH (target_fw:framework) WHERE false"
         count_query = f"""
         MATCH (c:control)
         OPTIONAL MATCH (ca:control_assessment {{control_id: c.control_id, organization_id: $org_id}})
         OPTIONAL MATCH (f:framework)-[:owns]->(c)
-        WITH c, ca, f, coalesce(f.framework_name, c.framework) AS framework_name
+        {target_fw_match}
+        WITH c, ca, f, target_fw, coalesce(f.framework_name, c.framework) AS framework_name
         {filter_str}
         RETURN count(c) AS total
         """
@@ -380,7 +393,8 @@ async def get_complaince_data(
         MATCH (c:control)
         OPTIONAL MATCH (ca:control_assessment {{control_id: c.control_id, organization_id: $org_id}})
         OPTIONAL MATCH (f:framework)-[:owns]->(c)
-        WITH c, ca, f, coalesce(f.framework_name, c.framework) AS framework_name
+        {target_fw_match}
+        WITH c, ca, f, target_fw, coalesce(f.framework_name, c.framework) AS framework_name
         {filter_str}
         RETURN c, ca, framework_name
         ORDER BY
